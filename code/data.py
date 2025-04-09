@@ -1,4 +1,4 @@
-# adapted from https://github.com/bryancjones/gale-shapley/tree/master
+# taken from https://github.com/bryancjones/gale-shapley/tree/master
 import random
 import csv
 
@@ -87,11 +87,9 @@ def makeData(num, groups, popNum, preferenceNum, fileName):
     # Write the generated dataset to the csv file. It is important to note that this
     # code will append the dataset to any existing contents in the file, so each time
     # you generate a data set, you should use a new file name.
-    with open(fileName, 'w') as f:
-        f.write(f"{num} {groups} {popNum} {preferenceNum}\n")
-        for row in data:
-            f.write(" ".join(map(str, row)) + "\n")
-
+    with open(fileName, 'a') as f:
+        writer = csv.writer(f)
+        writer.writerows(data)
 
 ##### Main #####
 if __name__ == '__main__':
@@ -100,57 +98,56 @@ if __name__ == '__main__':
     groups = int(0.05 * population)
     popular = int(0.001 * population)
     rankings = 7
-    csvFolder = "csv/"
-    makeData(population,groups,popular,rankings, csvFolder + "data_UTAustin.txt")
+    makeData(population,groups,popular,rankings, "data_UTAustin.csv")
     ## Population Varied - 25,000 ##
     population = 25000
     groups = int(0.05 * population)
     popular = int(0.001 * population)
     rankings = 7
-    makeData(population,groups,popular,rankings, csvFolder + "data_size25000.txt")
+    makeData(population,groups,popular,rankings, "data_size25000.csv")
     ## Population Varied - 10,000 ##
     population = 10000
     groups = int(0.05 * population)
     popular = int(0.001 * population)
     rankings = 7
-    makeData(population,groups,popular,rankings, csvFolder + "data_size10000.txt")
+    makeData(population,groups,popular,rankings, "data_size10000.csv")
     ## Population Varied - 5,000 ##
     population = 5000
     groups = int(0.05 * population)
     popular = int(0.001 * population)
     rankings = 7
-    makeData(population,groups,popular,rankings, csvFolder + "data_size5000.txt")
+    makeData(population,groups,popular,rankings, "data_size5000.csv")
     ## Population Varied - 2,000 ##
     population = 2000
     groups = int(0.05 * population)
     popular = int(0.001 * population)
     rankings = 7
-    makeData(population,groups,popular,rankings, csvFolder + "data_size2000.txt")
+    makeData(population,groups,popular,rankings, "data_size2000.csv")
     ## Population Varied - 1,000 ##
     population = 1000
     groups = int(0.05 * population)
     popular = int(0.001 * population)
     rankings = 7
-    makeData(population,groups,popular,rankings, csvFolder + "data_size1000.txt")
+    makeData(population,groups,popular,rankings, "data_size1000.csv")
     ## Population Varied - 500 ##
     population = 500
     groups = int(0.05 * population)
     popular = int(0.001 * population)
     rankings = 7
-    makeData(population,groups,popular,rankings, csvFolder + "data_size500.txt")
+    makeData(population,groups,popular,rankings, "data_size500.csv")
     ## Population Varied - 200 ##
     population = 200
     groups = int(0.05 * population)
     popular = int(0.001 * population)
     rankings = 7
-    makeData(population,groups,popular,rankings, csvFolder + "data_size200.txt")
+    makeData(population,groups,popular,rankings, "data_size200.csv")
     ## Population Varied - 100 ##
     population = 100
     groups = int(0.05 * population)
     popular = int(0.001 * population)
     rankings = 7
-    makeData(population,groups,popular,rankings, csvFolder + "data_size100.txt")
-    makeData(80, 4, 3, 7, csvFolder + "data_WOOLF.txt")
-    makeData(60, 2, 1, 7, csvFolder + "data_JA.txt")
-    makeData(20, 1, 0, 7, csvFolder + "data_twenty.txt")        
+    makeData(population,groups,popular,rankings, "data_size100.csv")
+    makeData(80, 4, 3, 7, "data_WOOLF.csv")
+    makeData(60, 2, 1, 7, "data_JA.csv")
+    makeData(20, 1, 0, 7, "data_twenty.csv")        
         
