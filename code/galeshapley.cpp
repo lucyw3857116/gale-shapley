@@ -41,21 +41,17 @@ int main (int argc, char *argv[]) {
     // read the information about the data set
     fin >> num >> groups >> popNum >> preferenceNum;
     std::cout << "num: " << num << ", groups: " << groups << ", popNum: " << popNum << ", preferenceNum: " << preferenceNum << '\n';
-    std::vector<Participant> male(num//2);
-    std::vector<Participant> female(num//2);
+    std::vector<Participant> participants(num);
     for (int i = 0; i < num; i++) {
         Participant p;
         p.id = i;
+        
         for (int j = 0; j < preferenceNum; j++) {
             int preference;
             fin >> preference;
             p.preferences.push_back(preference);
         }
-        if (i < num//2) {
-            male.push_back(p);
-        } else {
-            female.push_back(p);
-        }
+        
     }
     
 }
