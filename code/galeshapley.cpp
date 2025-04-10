@@ -79,6 +79,7 @@ void find_stable_pairs(std::vector<Participant>& participants, int n, int numPre
 }
 
 int main (int argc, char *argv[]) {
+    const auto init_start = std::chrono::steady_clock::now();
     std::string input_filename;
     int opt;
     while ((opt = getopt(argc, argv, "f:")) != -1) {
@@ -147,8 +148,14 @@ int main (int argc, char *argv[]) {
     //     }
     //     std::cout << '\n';
     // }
+    const double init_time = std::chrono::duration_cast<std::chrono::duration<double>>(std::chrono::steady_clock::now() - init_start).count();
+    std::cout << "Initialization time (sec): " << std::fixed << std::setprecision(15) << init_time << '\n';
+    const auto compute_start = std::chrono::steady_clock::now();
 
     find_stable_pairs(participants, num, preferenceNum);
+    
+    const double compute_time = std::chrono::duration_cast<std::chrono::duration<double>>(std::chrono::steady_clock::now() - compute_start).count();
+    std::cout << "Computation time (sec): " << compute_time << '\n';
 
     if (std::size(input_filename) >= 4 && input_filename.substr(std::size(input_filename) - 4) == ".txt") {
         input_filename.resize(std::size(input_filename) - 4);
