@@ -25,20 +25,20 @@ void find_stable_pairs(std::vector<Participant>& participants, int n, int numPre
         int m_id = free_males.front();
         free_males.pop();
 
-        Participant& man = participants[m_id];
         if (propose_next[m_id] >= numPreferences){
             // this man has no one else to propose to
             printf("something wrong here - no match found for man %d\n", m_id);
             continue;
         } 
 
+        Participant& man = participants[m_id];
         int f_id = man.preferences[propose_next[m_id]];
         propose_next[m_id]++;
 
         Participant& woman = participants[f_id];
 
         // check if man is on her preference list
-        if (woman.preferenceRank.find(m_id) == woman.preferenceRank.end()) {
+        if (std::find(woman.preferences.begin(), woman.preferences.end(), m_id) == woman.preferences.end()) {
             // reject proposal
             free_males.push(m_id);
             continue;
@@ -106,7 +106,7 @@ int main (int argc, char *argv[]) {
             p.preferences.push_back(preference);
         }
         if (i >= num/2) { // is a woman
-            for (int idx = 0; idx < preferenceNum; ++idx) {
+            for (int idx = preferenceNum-1; idx >= 0; idx--) {
                 int man_id = p.preferences[idx];
                 p.preferenceRank[man_id] = idx;
             }
