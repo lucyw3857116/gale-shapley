@@ -1,13 +1,11 @@
-
-
 #include <vector>
 
 
 struct Participant {
     int id; // first half of ids male, second half of ids female
     std::vector<int> preferences;
-    int current_partner_id; // only for male
-    std::vector<int> proposals; // only for female
+    std::unordered_map<int, int> preferenceRank; // for females (rank maleid - index)
+    int current_partner_id = -1;
 };
 
 struct Match {
