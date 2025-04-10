@@ -39,6 +39,12 @@ void find_stable_pairs(std::vector<Participant>& participants, int n, int numPre
 
         Participant& woman = participants[f_id];
 
+        // check if man is on her preference list
+        if (woman.preferenceRank.find(m_id) == woman.preferenceRank.end()) {
+            free_males.push(m_id);
+            continue;
+        }
+        
         // first proposal, accept this one
         if (woman.current_partner_id == -1) {
             man.current_partner_id = f_id;

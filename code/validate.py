@@ -30,9 +30,6 @@ if __name__ == "__main__":
         matches[int(line[0])] = int(line[1])
         matches[int(line[1])] = int(line[0])
 
-    print(pref_list)
-    print()
-    print(matches)
     # for each pair check all other possible matches and see if they are ranked higher
     stable = True
     for m in range(0,num_participants//2):
@@ -45,13 +42,10 @@ if __name__ == "__main__":
             # check if this pair ranks each other higher than the chosen pair
             if female_id in pref_list[m] and male_id in pref_list[f]:
                 check1 = pref_list[m].index(female_id) < pref_list[m].index(str(male_match))
-                print("")
-                print(pref_list[f])
-                print(male_id, female_match, f)
                 check2 = pref_list[f].index(male_id) < pref_list[f].index(str(female_match))
 
                 if (check1 and check2):
-                    print(f"Blocking pair found: {male_id} and {female_id}, incorrect")
+                    print(f"Blocking pair found: (%d,%d) over (%d, %d) and (%d, %d)" % (m, f, m, male_match, f, female_match))
                     stable = False
                     break
 
