@@ -25,16 +25,28 @@ void find_stable_pairs(std::vector<Participant>& participants, int n, int numPre
         int m_id = free_males.front();
         free_males.pop();
 
+        if (m_id >= propose_next.size()){
+            printf("OUT OF BOUND 1\n");
+        }
+
         if (propose_next[m_id] >= numPreferences){
             // this man has no one else to propose to
             printf("something wrong here - no match found for man %d\n", m_id);
             continue;
         } 
 
+        if (m_id >= participants.size()){
+            printf("OUT OF BOUND 2\n");
+        }
+
         Participant& man = participants[m_id];
         int f_id = man.preferences[propose_next[m_id]];
         propose_next[m_id]++;
+        if (f_id >= participants.size()){
+            std::cout << "f_id: " << f_id << "\n";
 
+            printf("OUT OF BOUND 3\n");
+        }
         Participant& woman = participants[f_id];
 
         // check if man is on her preference list
@@ -90,31 +102,53 @@ int main (int argc, char *argv[]) {
         std::cerr << "Unable to open file: " << input_filename << ".\n";
         exit(EXIT_FAILURE);
     }
-    int num, groups, popNum, preferenceNum;
+    int num, preferenceNum;
 
     // read the information about the data set
-    fin >> num >> groups >> popNum >> preferenceNum;
-    std::cout << "num: " << num << ", groups: " << groups << ", popNum: " << popNum << ", preferenceNum: " << preferenceNum << '\n';
-    std::vector<Participant> participants(num);
-    for (int i = 0; i < num; i++) {
+    fin >> num;
+    std::vector<Participant> participants(num*2);
+    for (int i = 0; i < num*2; i++) {
         Participant p;
         p.id = i;
+        fin >> preferenceNum;
         
-        for (int j = 0; j < preferenceNum; j++) {
-            int preference;
-            fin >> preference;
-            p.preferences.push_back(preference);
-        }
-        if (i >= num/2) { // is a woman
+        
+        if (i >= num) { // is a woman
+            for (int j = 0; j < preferenceNum; j++) {
+                int preference;
+                fin >> preference;
+                p.preferences.push_back(preference-1);
+            }
             for (int idx = preferenceNum-1; idx >= 0; idx--) {
                 int man_id = p.preferences[idx];
                 p.preferenceRank[man_id] = idx;
             }
+            
+        } else {
+            for (int j = 0; j < preferenceNum; j++) {
+                int preference;
+                fin >> preference;
+                p.preferences.push_back(preference+num-1);
+            }
         }
         participants[i] = p;
+        // std::cout << "id: " << p.id << ", preferences: ";
+        // for (int pref : p.preferences) {
+        //     std::cout << pref << " ";
+        // }
+        // std::cout << '\n';
     }
+    //print out participants
+    // std::cout << "Participants:\n";
+    // for (auto& p : participants) {
+    //     std::cout << "id: " << p.id << ", preferences: ";
+    //     for (int pref : p.preferences) {
+    //         std::cout << pref << " ";
+    //     }
+    //     std::cout << '\n';
+    // }
 
-    find_stable_pairs(participants, num/2, preferenceNum);
+    find_stable_pairs(participants, num, preferenceNum);
 
     if (std::size(input_filename) >= 4 && input_filename.substr(std::size(input_filename) - 4) == ".txt") {
         input_filename.resize(std::size(input_filename) - 4);
@@ -127,7 +161,7 @@ int main (int argc, char *argv[]) {
         exit(EXIT_FAILURE);
     }
     
-    for (int i = 0; i < num/2; ++i) {
+    for (int i = 0; i < num; ++i) {
         output << participants[i].id << " " << participants[i].current_partner_id << "\n";
     }
     output.close();

@@ -11,13 +11,16 @@ if __name__ == "__main__":
     
     with open(input_file, "r") as f:
         header = f.readline().strip()
-        num_part, _, _, num_pref = header.split()
-        num_participants = int(num_part)
-        num_preferences = int(num_pref)
-
+        num_participants = int(header)*2
         pref_list = []
+        count = 0
         for line in f:
             prefs = line.strip().split()
+            if count < num_participants//2:
+                prefs = [int(p) - 1 + num_participants//2 for p in prefs[1:]]
+            else:
+                prefs = [int(p) - 1 for p in prefs[1:]]
+            count += 1
             pref_list.append(prefs)
 
     with open(output_file, "r") as f:
