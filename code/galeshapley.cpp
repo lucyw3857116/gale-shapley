@@ -28,9 +28,7 @@ void find_stable_pairs(std::vector<Participant>& participants, int n, int numPre
         Participant& man = participants[m_id];
         if (propose_next[m_id] >= numPreferences){
             // this man has no one else to propose to
-            if (man.current_partner_id == -1) {
-                printf("something wrong here - no match found for man %d\n", m_id);
-            }
+            printf("something wrong here - no match found for man %d\n", m_id);
             continue;
         } 
 
@@ -41,6 +39,7 @@ void find_stable_pairs(std::vector<Participant>& participants, int n, int numPre
 
         // check if man is on her preference list
         if (woman.preferenceRank.find(m_id) == woman.preferenceRank.end()) {
+            // reject proposal
             free_males.push(m_id);
             continue;
         }
@@ -53,8 +52,9 @@ void find_stable_pairs(std::vector<Participant>& participants, int n, int numPre
         else {
             if (woman.preferenceRank[m_id] < woman.preferenceRank[woman.current_partner_id]) {
                 // woman prefers the new man
-                participants[woman.current_partner_id].current_partner_id = -1;
+                participants[woman.current_partner_id].current_partner_id = -1; // old partner no longer has match
                 free_males.push(woman.current_partner_id);
+
                 woman.current_partner_id = m_id;
                 man.current_partner_id = f_id;
             } else {
@@ -114,12 +114,7 @@ int main (int argc, char *argv[]) {
         participants[i] = p;
     }
 
-    
-
     find_stable_pairs(participants, num/2, preferenceNum);
-
-    // go thorugh first half of participants (all males)
-    // create txt file that has maleId matchId on each row
 
     if (std::size(input_filename) >= 4 && input_filename.substr(std::size(input_filename) - 4) == ".txt") {
         input_filename.resize(std::size(input_filename) - 4);
@@ -137,6 +132,5 @@ int main (int argc, char *argv[]) {
     }
     output.close();
     std::cout << "Matches written to " << output_filename << "\n";
-
 
 }
