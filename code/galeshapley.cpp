@@ -25,28 +25,15 @@ void find_stable_pairs(std::vector<Participant>& participants, int n, int numPre
         int m_id = free_males.front();
         free_males.pop();
 
-        if (m_id >= propose_next.size()){
-            printf("OUT OF BOUND 1\n");
-        }
-
         if (propose_next[m_id] >= numPreferences){
             // this man has no one else to propose to
             printf("something wrong here - no match found for man %d\n", m_id);
             continue;
         } 
 
-        if (m_id >= participants.size()){
-            printf("OUT OF BOUND 2\n");
-        }
-
         Participant& man = participants[m_id];
         int f_id = man.preferences[propose_next[m_id]];
         propose_next[m_id]++;
-        if (f_id >= participants.size()){
-            std::cout << "f_id: " << f_id << "\n";
-
-            printf("OUT OF BOUND 3\n");
-        }
         Participant& woman = participants[f_id];
 
         // check if man is on her preference list
@@ -62,7 +49,8 @@ void find_stable_pairs(std::vector<Participant>& participants, int n, int numPre
             woman.current_partner_id = m_id;
         }
         else {
-            if (woman.preferenceRank[m_id] < woman.preferenceRank[woman.current_partner_id]) {
+            if (std::find(woman.preferences.begin(), woman.preferences.end(), m_id) < std::find(woman.preferences.begin(), woman.preferences.end(), woman.current_partner_id)) {
+            // if (woman.preferenceRank[m_id] < woman.preferenceRank[woman.current_partner_id]) {
                 // woman prefers the new man
                 participants[woman.current_partner_id].current_partner_id = -1; // old partner no longer has match
                 free_males.push(woman.current_partner_id);
@@ -120,10 +108,10 @@ int main (int argc, char *argv[]) {
                 fin >> preference;
                 p.preferences.push_back(preference-1);
             }
-            for (int idx = preferenceNum-1; idx >= 0; idx--) {
-                int man_id = p.preferences[idx];
-                p.preferenceRank[man_id] = idx;
-            }
+            // for (int idx = preferenceNum-1; idx >= 0; idx--) {
+            //     int man_id = p.preferences[idx];
+            //     p.preferenceRank[man_id] = idx;
+            // }
             
         } else {
             for (int j = 0; j < preferenceNum; j++) {
