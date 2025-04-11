@@ -14,6 +14,7 @@
 
 #include "galeshapley.h"
 
+
 void find_stable_pairs(std::vector<Participant>& participants, int n, int numPreferences) {
     std::vector<int> propose_next(n, 0); // which woman each man will propose to next
     std::queue<int> free_males;
@@ -66,14 +67,23 @@ void find_stable_pairs(std::vector<Participant>& participants, int n, int numPre
 
 }
 
+void find_stable_pairs_parallel(std::vector<Participant>& participants, int n, int numPreferences) {
+    printf("fail");
+}
+
+
+
 int main (int argc, char *argv[]) {
     const auto init_start = std::chrono::steady_clock::now();
-    std::string input_filename;
+    std::string input_filename, mode;
     int opt;
-    while ((opt = getopt(argc, argv, "f:")) != -1) {
+    while ((opt = getopt(argc, argv, "f:m:")) != -1) {
         switch (opt) {
             case 'f':
                 input_filename = optarg;
+                break;
+            case 'm':
+                mode = optarg;
                 break;
             default:
                 std::cerr << "Usage: " << argv[0] << " -f input_filename\n";
@@ -140,7 +150,15 @@ int main (int argc, char *argv[]) {
     std::cout << "Initialization time (sec): " << std::fixed << std::setprecision(15) << init_time << '\n';
     const auto compute_start = std::chrono::steady_clock::now();
 
-    find_stable_pairs(participants, num, preferenceNum);
+    if (mode == "s") {
+        find_stable_pairs(participants, num, preferenceNum);
+    } else if (mode == "p1") {
+        find_stable_pairs_parallel(participants, num, preferenceNum);
+    } else {
+        std::cerr << "Invalid mode: " << mode << '\n';
+        exit(EXIT_FAILURE);
+    }
+    
     
     const double compute_time = std::chrono::duration_cast<std::chrono::duration<double>>(std::chrono::steady_clock::now() - compute_start).count();
     std::cout << "Computation time (sec): " << compute_time << '\n';

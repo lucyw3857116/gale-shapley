@@ -32,6 +32,7 @@ if __name__ == "__main__":
     for line in output_data:
         matches[int(line[0])] = int(line[1])
         matches[int(line[1])] = int(line[0])
+    # print(matches)
 
     # for each pair check all other possible matches and see if they are ranked higher
     stable = True
@@ -40,6 +41,7 @@ if __name__ == "__main__":
             male_id = str(m)
             female_id = str(f)
             male_match = matches[m]
+            # print(f)
             female_match = matches[f]
 
             # check if this pair ranks each other higher than the chosen pair
