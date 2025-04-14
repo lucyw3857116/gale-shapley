@@ -30,8 +30,13 @@ if __name__ == "__main__":
 
     matches = dict()
     for line in output_data:
-        matches[int(line[0])] = int(line[1])
-        matches[int(line[1])] = int(line[0])
+        m = int(line[0])
+        w = int(line[1])
+        if w in matches.keys():
+            print("Two men with same woman ("+line[1]+"): "+line[0]+" and ", str(matches[w]))
+            stable = False
+        matches[m] = w
+        matches[w] = m
     # print(matches)
 
     # for each pair check all other possible matches and see if they are ranked higher
@@ -40,6 +45,14 @@ if __name__ == "__main__":
         for f in range(num_participants//2, num_participants):
             male_id = str(m)
             female_id = str(f)
+            if m not in matches.keys():
+                print("There was no match for m = " + str(m) + " \n")
+                stable = False
+                break
+            if f not in matches.keys():
+                print("There was no match for f = " + str(f) + " \n")
+                stable = False
+                break
             male_match = matches[m]
             # print(f)
             female_match = matches[f]

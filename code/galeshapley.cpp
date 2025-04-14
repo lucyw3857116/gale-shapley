@@ -67,7 +67,7 @@ void find_stable_pairs(std::vector<Participant>& participants, int n, int numPre
 
 }
 
-void find_stable_pairs_parallel(std::vector<Participant>& participants, int n, int numPreferences){
+void find_stable_pairs_parallel(std::vector<Participant>& participants, int n, int numPreferences, int num_threads){
     // intialize everyone as free
     for (int i = 0; i < 2*n; i++) {
         participants[i].current_partner_id = -1;
@@ -83,7 +83,8 @@ void find_stable_pairs_parallel(std::vector<Participant>& participants, int n, i
         // proposal containers for each participant
         std::vector<std::vector<int>> proposals(2*n);
         // each man makes their next proposal
-        #pragma omp parallel for
+        // #pragma omp parallel for
+        #pragma omp parallel for num_threads(num_threads)
         for (unsigned int i = 0; i < free_males.size(); i++) {
             int m = free_males[i];
             if (propose_next[m] < numPreferences) {
@@ -97,7 +98,7 @@ void find_stable_pairs_parallel(std::vector<Participant>& participants, int n, i
         std::vector<bool> is_free(n, false);
         std::vector<int> new_free_men;
         // for each woman, choose the best candidate on her list
-        #pragma omp parallel for
+        #pragma omp parallel for num_threads(num_threads)
         for (int w = n; w < 2*n; w++) {
             int current_partner_id = participants[w].current_partner_id;
             int best_candidate = current_partner_id;
@@ -119,10 +120,11 @@ void find_stable_pairs_parallel(std::vector<Participant>& participants, int n, i
                 // if previously had a match, free the former match
                 if (current_partner_id != -1) {
                     participants[current_partner_id].current_partner_id = -1;
-                    // if (!is_free[current_partner_id]) {
-                    //     new_free_men.push_back(current_partner_id);
-                    //     is_free[current_partner_id] = true;
-                    // }
+                    if (!is_free[current_partner_id]) {
+                        #pragma omp critical
+                        new_free_men.push_back(current_partner_id);
+                        is_free[current_partner_id] = true;
+                    }
                 }
                 participants[w].current_partner_id = best_candidate;
                 participants[best_candidate].current_partner_id = w;
@@ -142,16 +144,16 @@ void find_stable_pairs_parallel(std::vector<Participant>& participants, int n, i
         }
         free_males = new_free_men;
 
-
     }
-
 }
+
 
 int main (int argc, char *argv[]) {
     const auto init_start = std::chrono::steady_clock::now();
     std::string input_filename, mode;
+    int num_threads = 0;
     int opt;
-    while ((opt = getopt(argc, argv, "f:m:")) != -1) {
+    while ((opt = getopt(argc, argv, "f:m:n:")) != -1) {
         switch (opt) {
             case 'f':
                 input_filename = optarg;
@@ -159,13 +161,16 @@ int main (int argc, char *argv[]) {
             case 'm':
                 mode = optarg;
                 break;
+            case 'n':
+                num_threads = atoi(optarg);
+                break;
             default:
                 std::cerr << "Usage: " << argv[0] << " -f input_filename\n";
                 exit(EXIT_FAILURE);
         }
     }
     // Check if required options are provided
-    if (empty(input_filename) && empty(mode)) {
+    if (empty(input_filename) || empty(mode) || num_threads <= 0) {
         std::cerr << "Usage: " << argv[0] << " -f input_filename -n num_threads -m parallel_mode\n";
         exit(EXIT_FAILURE);
     }
@@ -229,7 +234,10 @@ int main (int argc, char *argv[]) {
         find_stable_pairs(participants, num, preferenceNum);
     } else if (mode == "p1") {
         std::cout << "Running pii code \n";
-        find_stable_pairs_parallel(participants, num, preferenceNum);
+        find_stable_pairs_parallel(participants, num, preferenceNum, num_threads);
+    } else if (mode == "p2") {
+        std::cout << "Running pii-sc code \n";
+        find_stable_pairs_parallel_sc(participants, num, preferenceNum);
     } else {
         std::cerr << "Invalid mode: " << mode << '\n';
         exit(EXIT_FAILURE);
