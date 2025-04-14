@@ -67,11 +67,85 @@ void find_stable_pairs(std::vector<Participant>& participants, int n, int numPre
 
 }
 
-void find_stable_pairs_parallel(std::vector<Participant>& participants, int n, int numPreferences) {
-    printf("fail");
+void find_stable_pairs_parallel(std::vector<Participant>& participants, int n, int numPreferences){
+    // intialize everyone as free
+    for (int i = 0; i < 2*n; i++) {
+        participants[i].current_partner_id = -1;
+    }
+
+    std::vector<int> propose_next(n, 0);
+    std::vector<int> free_males;
+    for (int i = 0; i < n; i++) {
+        free_males.push_back(i); // all men are free at first
+    }
+
+    while (!free_males.empty()) {
+        // proposal containers for each participant
+        std::vector<std::vector<int>> proposals(2*n);
+        // each man makes their next proposal
+        #pragma omp parallel for
+        for (unsigned int i = 0; i < free_males.size(); i++) {
+            int m = free_males[i];
+            if (propose_next[m] < numPreferences) {
+                int f = participants[m].preferences[propose_next[m]];
+                #pragma omp critical
+                proposals[f].push_back(m);
+                propose_next[m]++;
+            }
+        }
+
+        std::vector<bool> is_free(n, false);
+        std::vector<int> new_free_men;
+        // for each woman, choose the best candidate on her list
+        #pragma omp parallel for
+        for (int w = n; w < 2*n; w++) {
+            int current_partner_id = participants[w].current_partner_id;
+            int best_candidate = current_partner_id;
+            for (int m : proposals[w]) {
+                // if she doesn't have a match yet, choose m
+                if (best_candidate == -1) {
+                best_candidate = m;
+                } else {
+                    std::vector<int> prefs = participants[w].preferences;
+                    int rank_new = std::find(prefs.begin(), prefs.end(), m) - prefs.begin();
+                    int rank_best = std::find(prefs.begin(), prefs.end(), best_candidate) - prefs.begin();
+                    if (rank_new < rank_best) {
+                        best_candidate = m;
+                    }
+                }
+            }
+            // if changes partner
+            if (best_candidate != current_partner_id) {
+                // if previously had a match, free the former match
+                if (current_partner_id != -1) {
+                    participants[current_partner_id].current_partner_id = -1;
+                    // if (!is_free[current_partner_id]) {
+                    //     new_free_men.push_back(current_partner_id);
+                    //     is_free[current_partner_id] = true;
+                    // }
+                }
+                participants[w].current_partner_id = best_candidate;
+                participants[best_candidate].current_partner_id = w;
+            }
+        }
+
+        // check if a man is unmatched and still has someone left to propose to
+        // add him to the free men list
+        for (int m = 0; m < n; m++) {
+            if (participants[m].current_partner_id == -1 && 
+                propose_next[m] < numPreferences) {
+                    if (!is_free[m]) {
+                        new_free_men.push_back(m);
+                        is_free[m] = true;
+                    }
+            }
+        }
+        free_males = new_free_men;
+
+
+    }
+
 }
-
-
 
 int main (int argc, char *argv[]) {
     const auto init_start = std::chrono::steady_clock::now();
@@ -91,8 +165,8 @@ int main (int argc, char *argv[]) {
         }
     }
     // Check if required options are provided
-    if (empty(input_filename)) {
-        std::cerr << "Usage: " << argv[0] << " -f input_filename -n num_threads [-p SA_prob] [-i SA_iters] -m parallel_mode -b batch_size\n";
+    if (empty(input_filename) && empty(mode)) {
+        std::cerr << "Usage: " << argv[0] << " -f input_filename -n num_threads -m parallel_mode\n";
         exit(EXIT_FAILURE);
     }
     std::cout << "Input file: " << input_filename << '\n';
@@ -119,8 +193,8 @@ int main (int argc, char *argv[]) {
                 p.preferences.push_back(preference-1);
             }
             // for (int idx = preferenceNum-1; idx >= 0; idx--) {
-            //     int man_id = p.preferences[idx];
-            //     p.preferenceRank[man_id] = idx;
+            //     int man_id = p.preferences[idx];
+            //     p.preferenceRank[man_id] = idx;
             // }
             
         } else {
@@ -133,26 +207,28 @@ int main (int argc, char *argv[]) {
         participants[i] = p;
         // std::cout << "id: " << p.id << ", preferences: ";
         // for (int pref : p.preferences) {
-        //     std::cout << pref << " ";
+        //     std::cout << pref << " ";
         // }
         // std::cout << '\n';
     }
     //print out participants
     // std::cout << "Participants:\n";
     // for (auto& p : participants) {
-    //     std::cout << "id: " << p.id << ", preferences: ";
-    //     for (int pref : p.preferences) {
-    //         std::cout << pref << " ";
-    //     }
-    //     std::cout << '\n';
+    //     std::cout << "id: " << p.id << ", preferences: ";
+    //     for (int pref : p.preferences) {
+    //         std::cout << pref << " ";
+    //     }
+    //     std::cout << '\n';
     // }
     const double init_time = std::chrono::duration_cast<std::chrono::duration<double>>(std::chrono::steady_clock::now() - init_start).count();
     std::cout << "Initialization time (sec): " << std::fixed << std::setprecision(15) << init_time << '\n';
     const auto compute_start = std::chrono::steady_clock::now();
 
     if (mode == "s") {
+        std::cout << "Running serial code \n";
         find_stable_pairs(participants, num, preferenceNum);
     } else if (mode == "p1") {
+        std::cout << "Running pii code \n";
         find_stable_pairs_parallel(participants, num, preferenceNum);
     } else {
         std::cerr << "Invalid mode: " << mode << '\n';
@@ -174,9 +250,17 @@ int main (int argc, char *argv[]) {
         exit(EXIT_FAILURE);
     }
     
+    // for (int i = 0; i < num; ++i) {
+    //     output << participants[i].id << " " << participants[i].current_partner_id << "\n";
+    // }
     for (int i = 0; i < num; ++i) {
-        output << participants[i].id << " " << participants[i].current_partner_id << "\n";
+        if (participants[i].current_partner_id != -1) {
+            output << participants[i].id << " " << participants[i].current_partner_id << "\n";
+        } else {
+            std::cerr << "Warning: participant " << i << " was not matched.\n";
+        }
     }
+    
     output.close();
     std::cout << "Matches written to " << output_filename << "\n";
 
