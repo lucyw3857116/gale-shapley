@@ -34,7 +34,6 @@ if __name__ == "__main__":
         w = int(line[1])
         if w in matches.keys():
             print("Two men with same woman ("+line[1]+"): "+line[0]+" and ", str(matches[w]))
-            stable = False
         matches[m] = w
         matches[w] = m
     # print(matches)

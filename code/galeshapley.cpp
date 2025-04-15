@@ -83,7 +83,6 @@ void find_stable_pairs_parallel(std::vector<Participant>& participants, int n, i
         // proposal containers for each participant
         std::vector<std::vector<int>> proposals(2*n);
         // each man makes their next proposal
-        // #pragma omp parallel for
         #pragma omp parallel for num_threads(num_threads)
         for (unsigned int i = 0; i < free_males.size(); i++) {
             int m = free_males[i];
@@ -237,7 +236,7 @@ int main (int argc, char *argv[]) {
         find_stable_pairs_parallel(participants, num, preferenceNum, num_threads);
     } else if (mode == "p2") {
         std::cout << "Running pii-sc code \n";
-        find_stable_pairs_parallel_sc(participants, num, preferenceNum);
+        // find_stable_pairs_parallel_sc(participants, num, preferenceNum);
     } else {
         std::cerr << "Invalid mode: " << mode << '\n';
         exit(EXIT_FAILURE);
