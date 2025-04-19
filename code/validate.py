@@ -40,8 +40,12 @@ if __name__ == "__main__":
 
     # for each pair check all other possible matches and see if they are ranked higher
     stable = True
+    mCount = 0
+    fCount = 0
     for m in range(0,num_participants//2):
+        mCount += 1
         for f in range(num_participants//2, num_participants):
+            fCount += 1
             male_id = str(m)
             female_id = str(f)
             if m not in matches.keys():
@@ -71,4 +75,5 @@ if __name__ == "__main__":
     
     if stable:
         print("No blocking pair found, correct!")
+    print(mCount, fCount)
 
