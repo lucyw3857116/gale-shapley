@@ -16,55 +16,77 @@
 
 
 void find_stable_pairs(std::vector<Participant>& participants, int n, int numPreferences) {
-    std::vector<int> propose_next(n, 0); // which woman each man will propose to next
-    std::queue<int> free_males;
+    for (int i = 0; i < 2*n; i++) {
+        participants[i].current_partner_id = -1;
+    }
+
+    std::vector<int> propose_next(n, 0);
+    std::vector<int> free_males;
     for (int i = 0; i < n; i++) {
-        free_males.push(i); // all men are free at first
+        free_males.push_back(i); // all men are free at first
     }
 
     while (!free_males.empty()) {
-        int m_id = free_males.front();
-        free_males.pop();
-
-        if (propose_next[m_id] >= numPreferences){
-            // this man has no one else to propose to
-            printf("something wrong here - no match found for man %d\n", m_id);
-            continue;
-        } 
-
-        Participant& man = participants[m_id];
-        int f_id = man.preferences[propose_next[m_id]];
-        propose_next[m_id]++;
-        Participant& woman = participants[f_id];
-
-        // check if man is on her preference list
-        if (std::find(woman.preferences.begin(), woman.preferences.end(), m_id) == woman.preferences.end()) {
-            // reject proposal
-            free_males.push(m_id);
-            continue;
-        }
-        
-        // first proposal, accept this one
-        if (woman.current_partner_id == -1) {
-            man.current_partner_id = f_id;
-            woman.current_partner_id = m_id;
-        }
-        else {
-            if (std::find(woman.preferences.begin(), woman.preferences.end(), m_id) < std::find(woman.preferences.begin(), woman.preferences.end(), woman.current_partner_id)) {
-            // if (woman.preferenceRank[m_id] < woman.preferenceRank[woman.current_partner_id]) {
-                // woman prefers the new man
-                participants[woman.current_partner_id].current_partner_id = -1; // old partner no longer has match
-                free_males.push(woman.current_partner_id);
-
-                woman.current_partner_id = m_id;
-                man.current_partner_id = f_id;
-            } else {
-                // she rejects new proposer
-                free_males.push(m_id);
+        // proposal containers for each participant
+        std::vector<std::vector<int>> proposals(2*n);
+        // each man makes their next proposal
+        for (unsigned int i = 0; i < free_males.size(); i++) {
+            int m = free_males[i];
+            if (propose_next[m] < numPreferences) {
+                int f = participants[m].preferences[propose_next[m]];
+                proposals[f].push_back(m);
+                propose_next[m]++;
             }
         }
-    }
 
+        std::vector<bool> is_free(n, false);
+        std::vector<int> new_free_men;
+        // for each woman, choose the best candidate on her list
+        for (int w = n; w < 2*n; w++) {
+            int current_partner_id = participants[w].current_partner_id;
+            int best_candidate = current_partner_id;
+            for (int m : proposals[w]) {
+                // if she doesn't have a match yet, choose m
+                if (best_candidate == -1) {
+                best_candidate = m;
+                } else {
+                    std::vector<int> prefs = participants[w].preferences;
+                    int rank_new = std::find(prefs.begin(), prefs.end(), m) - prefs.begin();
+                    int rank_best = std::find(prefs.begin(), prefs.end(), best_candidate) - prefs.begin();
+                    if (rank_new < rank_best) {
+                        best_candidate = m;
+                    }
+                }
+            }
+            // if changes partner
+            if (best_candidate != current_partner_id) {
+                // if previously had a match, free the former match
+                if (current_partner_id != -1) {
+                    participants[current_partner_id].current_partner_id = -1;
+                    if (!is_free[current_partner_id]) {
+                        new_free_men.push_back(current_partner_id);
+                        is_free[current_partner_id] = true;
+                    }
+                }
+                participants[w].current_partner_id = best_candidate;
+                participants[best_candidate].current_partner_id = w;
+            }
+        }
+
+        // check if a man is unmatched and still has someone left to propose to
+        // add him to the free men list
+        for (int m = 0; m < n; m++) {
+            if (participants[m].current_partner_id == -1 && 
+                propose_next[m] < numPreferences) {
+                    if (!is_free[m]) {
+                        new_free_men.push_back(m);
+                        is_free[m] = true;
+                    }
+            }
+        }
+        free_males = new_free_men;
+
+    }
 }
 
 bool is_stable_matching(const std::vector<Participant>&participants, int n) {
