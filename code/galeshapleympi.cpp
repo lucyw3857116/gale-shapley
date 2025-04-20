@@ -250,6 +250,36 @@ void find_stable_pairs_parallel(std::vector<Participant>& men, std::vector<Parti
     }
 }
 
+bool is_stable_matching(const std::vector<Participant>&participants, int n) {
+    for (int m = 0; m < n; m++) {
+        int w = participants[m].current_partner_id;
+        const auto& m_prefs = participants[m].preferences;
+        const auto& w_prefs = participants[w].preferences;
+        for (int preferred_w : m_prefs) {
+            if (preferred_w == w) {
+                break; // found the current partner, no need to check further
+            }
+            int her_current = participants[preferred_w].current_partner_id;
+            const auto& her_prefs = participants[preferred_w].preferences;
+            int m_rank = -1;
+            int her_current_rank = -1;
+            for (int i = 0; i < her_prefs.size(); i++) {
+                if (her_prefs[i] == m) {
+                    m_rank = i;
+                }
+                if (her_prefs[i] == her_current) {
+                    her_current_rank = i;
+                }
+            }
+            if (m_rank < her_current_rank) {
+                // m prefers preferred_w over w, and preferred_w prefers m over her current partner
+                return false; // not stable
+            }
+        }
+    }
+    return true;
+}
+
 int main (int argc, char *argv[]) {
     const auto init_start = std::chrono::steady_clock::now();
     int pid;
@@ -263,18 +293,22 @@ int main (int argc, char *argv[]) {
     MPI_Comm_size(MPI_COMM_WORLD, &nproc);
     // printf("nproc %d, pid: %d\n", nproc, pid);
     
-    std::string input_filename, mode;
+    std::string mode;
     int num_threads = 0;
+    int num = 0;
     int opt;
-    while ((opt = getopt(argc, argv, "f:m:n:")) != -1) {
+    while ((opt = getopt(argc, argv, "m:n:t:")) != -1) {
         switch (opt) {
-            case 'f':
-                input_filename = optarg;
-                break;
+            // case 'f':
+            //     input_filename = optarg;
+            //     break;
             case 'm':
                 mode = optarg;
                 break;
             case 'n':
+                num = atoi(optarg);
+                break;
+            case 't':
                 num_threads = atoi(optarg);
                 break;
             default:
@@ -284,75 +318,78 @@ int main (int argc, char *argv[]) {
         }
     }
     // Check if required options are provided
-    if (empty(input_filename) || empty(mode) || num_threads <= 0) {
-        std::cerr << "Usage: " << argv[0] << " -f input_filename -n num_threads -m parallel_mode\n";
+    if (num <= 0 || empty(mode) || num_threads <= 0) {
+        std::cerr << "Usage: " << argv[0] << " -n num -t num_threads -m parallel_mode\n";
         MPI_Finalize();
         exit(EXIT_FAILURE);
     }
 
-    std::cout << "Input file: " << input_filename << '\n';
-    std::ifstream fin(input_filename);
-    if (!fin) {
-        std::cerr << "Unable to open file: " << input_filename << ".\n";
-        MPI_Finalize();
-        exit(EXIT_FAILURE);
-    }
-    int num, preferenceNum;
-    fin >> num;
+    
     int typePerProc = (num + nproc - 1) / nproc;
 
     int start_idx = pid * typePerProc;
     int end_idx = std::min((pid + 1) * typePerProc, num);
     std::vector<Participant> men(end_idx - start_idx);
     std::vector<Participant> women(end_idx - start_idx);
-    // printf("start: %d, end: %d, pid: %d \n", start_idx, end_idx, pid);
-
-    // printf("start loading nproc %d, pid: %d\n", nproc, pid);
-    for (int i = 0; i < num; i++) {
-        // printf("i: %d, pid: %d\n", i, pid);
-        if (i >= start_idx && i < end_idx) {
-            // save it for yourself
+    std::vector<Participant> participants(num*2);
+    std::vector<int> serialized(num*2*(1+num));
+    if (pid == 0) {
+        for (int i = 0; i < num * 2; i++) {
+            std::vector<int> prefs(num);
+            for (int j = 0; j < num; j++) {
+                prefs[j] = j;
+            }
+            std::mt19937 rng(i * 1000 + 42); // check this
+            std:shuffle(prefs.begin(), prefs.end(), rng);
             Participant p;
             p.id = i;
-            fin >> preferenceNum;
-            for (int j = 0; j < preferenceNum; j++) {
-                int preference;
-                fin >> preference;
-                p.preferences.push_back(preference-1 + num);
+            if (i < num) {
+                for (int j = 0; j < num; j++) {
+                    p.preferences.push_back(prefs[j] + num);
+                }
+            } else {
+                for (int j = 0; j < num; j++) {
+                    p.preferences.push_back(prefs[j]);
+                }
             }
-            men[i-pid*typePerProc] = p;    
-        } else {
-            // ignore the values
-            fin >> preferenceNum;
-            for (int j = 0; j < preferenceNum; j++) {
-                int preference;
-                fin >> preference;
-            }
-        }
-    }
-    // printf("after reading men %d\n", pid);
-    for (int i = 0; i < num; i++) {
-        if (i >= start_idx && i < end_idx) {
-            // save it for yourself
-            Participant p;
-            p.id = i+num;
-            fin >> preferenceNum;
-            for (int j = 0; j < preferenceNum; j++) {
-                int preference;
-                fin >> preference;
-                p.preferences.push_back(preference-1);
-            }
-            women[i-pid*typePerProc] = p;    
-        } else {
-            // ignore the values
-            fin >> preferenceNum;
-            for (int j = 0; j < preferenceNum; j++) {
-                int preference;
-                fin >> preference;
+            participants[i] = p;
+            serialized[i*(1+num)] = i;
+            for (int j = 0; j < num; j++) {
+                serialized[i*(1+num)+j+1] = p.preferences[j];
             }
         }
-    }
 
+    }
+    MPI_Bcast(serialized.data(), num*2*(1+num), MPI_INT, 0, MPI_COMM_WORLD);
+    MPI_Barrier(MPI_COMM_WORLD);
+    // if (pid != 0) {
+    for (int i = 0; i < num*2; i++) {
+        if (i < num) {
+            if (i < start_idx || i >= end_idx) {
+                continue;
+            }
+        } else {
+            if (i < start_idx + num || i >= end_idx + num) {
+                continue;
+            }
+        }
+        Participant p;
+        p.id = serialized[i*(1+num)];
+        for (int j = 0; j < num; j++) {
+            p.preferences.push_back(serialized[i*(1+num)+j+1]);
+        }
+        participants[i] = p;
+        if (i < num) {
+            men[i - start_idx] = p;
+        } else {
+            women[i - num - start_idx] = p;
+        }
+    }
+    // }
+    
+
+
+    
     const double init_time = std::chrono::duration_cast<std::chrono::duration<double>>(std::chrono::steady_clock::now() - init_start).count();
     std::cout << "Initialization time (sec): " << std::fixed << std::setprecision(15) << init_time << '\n';
     const auto compute_start = std::chrono::steady_clock::now();
@@ -361,12 +398,10 @@ int main (int argc, char *argv[]) {
         std::cout << "Running serial code \n";
     } else if (mode == "p1") {
         std::cout << "Running pii code \n";
-        // printf("nproc %d, pid: %d\n", nproc, pid);
-        find_stable_pairs_parallel(men, women, num, preferenceNum, nproc, pid);
+        find_stable_pairs_parallel(men, women, num, num, nproc, pid);
         printf("after running pii code %d\n", pid);
     } else if (mode == "p2") {
         std::cout << "Running pii-sc code \n";
-        // find_stable_pairs_parallel_sc(participants, num, preferenceNum);
     } else {
         std::cerr << "Invalid mode: " << mode << '\n';
         MPI_Finalize();
@@ -377,21 +412,7 @@ int main (int argc, char *argv[]) {
     const double compute_time = std::chrono::duration_cast<std::chrono::duration<double>>(std::chrono::steady_clock::now() - compute_start).count();
     std::cout << "Computation time (sec): " << compute_time << '\n';
 
-    if (std::size(input_filename) >= 4 && input_filename.substr(std::size(input_filename) - 4) == ".txt") {
-        input_filename.resize(std::size(input_filename) - 4);
-    }
-    const std::string output_filename = input_filename + "_output.txt";
-
-    std::ofstream output(output_filename, std::fstream::out);
-    if (!output) {
-        std::cerr << "Unable to open file: " << output_filename << '\n';
-        MPI_Finalize();
-        exit(EXIT_FAILURE);
-    }
     
-    // for (int i = 0; i < num; ++i) {
-    //     output << participants[i].id << " " << participants[i].current_partner_id << "\n";
-    // }
     MPI_Barrier(MPI_COMM_WORLD);
     const auto finalizing_start = std::chrono::steady_clock::now();
 
@@ -402,9 +423,6 @@ int main (int argc, char *argv[]) {
             local_results.push_back(man.id);
             local_results.push_back(man.current_partner_id);
         }
-        for (int i = 0; i < local_results.size(); i += 2) {
-            // printf("%d local_results: %d %d\n", pid, local_results[i], local_results[i+1]);
-        }
     }
     if (pid != 0) {
         int send_size = local_results.size();
@@ -412,36 +430,29 @@ int main (int argc, char *argv[]) {
         MPI_Send(local_results.data(), send_size, MPI_INT, 0, 1, MPI_COMM_WORLD);
         
     } else {
-        for (int i = 0; i < local_results.size(); i += 2) {
-            output << local_results[i] << " " << local_results[i+1] << "\n";
-            // printf("%d local: %d %d\n", pid, local_results[i], local_results[i+1]);
-        }
         for (int src = 1; src < nproc; src++) {
             int recv_size;
             MPI_Recv(&recv_size, 1, MPI_INT, src, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
             std::vector<int> recv_data(recv_size);
             MPI_Recv(recv_data.data(), recv_size, MPI_INT, src, 1, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 
-            for (int i = 0; i < recv_data.size(); i += 2) {
-                output << recv_data[i] << " " << recv_data[i+1] << "\n";
-                // printf("%d recv: %d %d\n", pid, recv_data[i], recv_data[i+1]);
-            }
         }
     }
 
     const double finalizing_time = std::chrono::duration_cast<std::chrono::duration<double>>(std::chrono::steady_clock::now() - finalizing_start).count();
     std::cout << "Finalizing time (sec): " << finalizing_time << '\n';
-
-    // for (int i = 0; i < num; ++i) {
-    //     if (participants[i].current_partner_id != -1) {
-    //         output << participants[i].id << " " << participants[i].current_partner_id << "\n";
+    // // validation
+    // if (pid == 0){
+    //     bool valid;
+    //     valid = is_stable_matching(participants, num);
+    //     if (!valid) {
+    //         std::cerr << "Warning: the matching is not stable.\n";
     //     } else {
-    //         std::cerr << "Warning: participant " << i << " was not matched.\n";
+    //         std::cout << "The matching is stable.\n";
     //     }
     // }
     
-    output.close();
-    std::cout << "Matches written to " << output_filename << "\n";
+    
     MPI_Finalize();
 
 }
