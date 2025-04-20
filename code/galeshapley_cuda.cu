@@ -9,8 +9,6 @@
 #include <string>
 #include <unistd.h>
 #include <iomanip>
-#include <nv/target>
-
 
 #include "galeshapley.h"
 
