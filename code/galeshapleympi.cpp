@@ -330,12 +330,15 @@ int main (int argc, char *argv[]) {
     std::vector<Participant> participants(num*2);
     std::vector<int> serialized(num*2*(1+num));
     if (pid == 0) {
+        std::random_device rd;
+        std::mt19937 rng(rd());
         for (int i = 0; i < num * 2; i++) {
             std::vector<int> prefs(num);
             for (int j = 0; j < num; j++) {
                 prefs[j] = j;
             }
-            std::mt19937 rng(i * 1000 + 42); // check this
+            // std::mt19937 rng(i * 1000 + 42); // check this
+            // std::mt19937 rng(std::time(nullptr));
             std:shuffle(prefs.begin(), prefs.end(), rng);
             Participant p;
             p.id = i;
@@ -356,6 +359,16 @@ int main (int argc, char *argv[]) {
         }
 
     }
+    for (const auto& p : participants) {
+        std::cout << "Participant " << p.id
+                  << " is matched with " << p.current_partner_id
+                  << "\nPreferences: ";
+        for (int pref : p.preferences) {
+            std::cout << pref << " ";
+        }
+        std::cout << "\n\n";
+    }
+    
     MPI_Bcast(serialized.data(), num*2*(1+num), MPI_INT, 0, MPI_COMM_WORLD);
     MPI_Barrier(MPI_COMM_WORLD);
     // if (pid != 0) {

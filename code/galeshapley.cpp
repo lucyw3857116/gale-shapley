@@ -123,7 +123,14 @@ void find_stable_pairs_parallel(std::vector<Participant>& participants, int n, i
         free_males.push_back(i); // all men are free at first
     }
 
+    int iterations = 0;
+    auto compute_start = std::chrono::steady_clock::now();
+
     while (!free_males.empty()) {
+        iterations += 1;
+        if (iterations % 1000 == 0 || iterations == 1) {
+            compute_start = std::chrono::steady_clock::now();
+        }
         // proposal containers for each participant
         std::vector<std::vector<int>> proposals(2*n);
         // each man makes their next proposal
@@ -187,8 +194,13 @@ void find_stable_pairs_parallel(std::vector<Participant>& participants, int n, i
             }
         }
         free_males = new_free_men;
+        if (iterations % 1000 == 0 || iterations == 1) {
+            const double init_time = (std::chrono::duration_cast<std::chrono::duration<double>>(std::chrono::steady_clock::now() - compute_start).count());
+            printf("time for iteration %d is %f\n", iterations, init_time);
+        }
 
     }
+    printf("total iterations %d\n", iterations);
 }
 
 void find_stable_pairs_pii(std::vector<Participant>& participants, int n, int numPreferences, int num_threads){
