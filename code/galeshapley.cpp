@@ -337,13 +337,14 @@ int main (int argc, char *argv[]) {
     }
     
     std::vector<Participant> participants(num*2);
-    
+    std::random_device rd;
+    std::mt19937 rng(rd());
     for (int i = 0; i < num * 2; i++) {
         std::vector<int> prefs(num);
         for (int j = 0; j < num; j++) {
             prefs[j] = j;
         }
-        std::mt19937 rng(i * 1000 + 42); // check this
+        // std::mt19937 rng(i * 1000 + 42); // check this
         std::shuffle(prefs.begin(), prefs.end(), rng);
         Participant p;
         p.id = i;
