@@ -19,19 +19,15 @@
 
 void find_stable_pairs_parallel(std::vector<Participant>& men, std::vector<Participant>& women, int n, int numPreferences, int nproc, int pid){
     int typePerProc = (n + nproc - 1) / nproc; // nproc is multiple of n
-    // printf("%d typePerProc %d\n", pid, typePerProc);
 
     int start_idx = pid * typePerProc;
     int end_idx = std::min((pid + 1) * typePerProc, n);
-    // printf("%d start_idx %d end_idx %d\n", pid, start_idx, end_idx);
     int local_size = end_idx - start_idx;
-    // printf("%d local_size %d\n", pid, local_size);
     std::vector<int> propose_next(local_size, 0);
     std::vector<int> free_males;
     for (int i = 0; i < local_size; i++) {
         free_males.push_back(i); // all men are free at first
     }
-    // printf("%d before while loop\n", pid);
     bool stable = false;
     int count = 0;
     while (!stable) {
@@ -396,12 +392,12 @@ int main (int argc, char *argv[]) {
 
     if (mode == "s") {
         std::cout << "Running serial code \n";
-    } else if (mode == "p1") {
-        std::cout << "Running pii code \n";
+    } else if (mode == "p") {
+        std::cout << "Running mpi code \n";
         find_stable_pairs_parallel(men, women, num, num, nproc, pid);
         printf("after running pii code %d\n", pid);
-    } else if (mode == "p2") {
-        std::cout << "Running pii-sc code \n";
+    } else if (mode == "p1") {
+        std::cout << "Running pii code \n";
     } else {
         std::cerr << "Invalid mode: " << mode << '\n';
         MPI_Finalize();
@@ -430,18 +426,34 @@ int main (int argc, char *argv[]) {
         MPI_Send(local_results.data(), send_size, MPI_INT, 0, 1, MPI_COMM_WORLD);
         
     } else {
+        // Include PID 0's own results
+        for (size_t i = 0; i < local_results.size(); i += 2) {
+            int m = local_results[i];
+            int w = local_results[i + 1];
+            participants[m].current_partner_id = w;
+            participants[w].current_partner_id = m;
+        }
+
         for (int src = 1; src < nproc; src++) {
             int recv_size;
             MPI_Recv(&recv_size, 1, MPI_INT, src, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
             std::vector<int> recv_data(recv_size);
             MPI_Recv(recv_data.data(), recv_size, MPI_INT, src, 1, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+            for (int i = 0; i < recv_size; i+=2) {
+                int m = recv_data[i];
+                int w = recv_data[i+1];
+                participants[m].current_partner_id = w;
+                participants[w].current_partner_id = m;
+            }
 
         }
     }
 
+    
+
     const double finalizing_time = std::chrono::duration_cast<std::chrono::duration<double>>(std::chrono::steady_clock::now() - finalizing_start).count();
     std::cout << "Finalizing time (sec): " << finalizing_time << '\n';
-    // // validation
+    // validation
     // if (pid == 0){
     //     bool valid;
     //     valid = is_stable_matching(participants, num);
