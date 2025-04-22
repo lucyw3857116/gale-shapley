@@ -234,7 +234,11 @@ void find_stable_pairs_pii(std::vector<Participant>& participants, int n, int nu
                 if (m_prefers_w && w_prefers_m) {
                     // m and w prefer each other over their current partners
                     stable = false;
-                    unstable_pairs.emplace_back(m, w, participants[m].preferences[w], participants[w].preferences[m]);
+                    // unstable_pairs.emplace_back(m, w, participants[m].preferences[w], participants[w].preferences[m]);
+                    int man_rank = std::find(participants[m].preferences.begin(), participants[m].preferences.end(), w) - participants[m].preferences.begin();
+                    int woman_rank = std::find(participants[w].preferences.begin(), participants[w].preferences.end(), m) - participants[w].preferences.begin();
+                    unstable_pairs.emplace_back(m, w, man_rank, woman_rank);
+
                 }
             }
         }
