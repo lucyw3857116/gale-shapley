@@ -11,15 +11,12 @@
 #include <random>
 #include <vector>
 #include <queue>
+#include <omp.h>
 
 #include "galeshapley.h"
 
 
 void find_stable_pairs(std::vector<Participant>& participants, int n, int numPreferences) {
-    for (int i = 0; i < 2*n; i++) {
-        participants[i].current_partner_id = -1;
-    }
-
     std::vector<int> propose_next(n, 0);
     std::vector<int> free_males;
     for (int i = 0; i < n; i++) {
@@ -120,11 +117,6 @@ bool is_stable_matching(const std::vector<Participant>&participants, int n) {
 }
 
 void find_stable_pairs_parallel(std::vector<Participant>& participants, int n, int numPreferences, int num_threads){
-    // intialize everyone as free
-    for (int i = 0; i < 2*n; i++) {
-        participants[i].current_partner_id = -1;
-    }
-
     std::vector<int> propose_next(n, 0);
     std::vector<int> free_males;
     for (int i = 0; i < n; i++) {
@@ -135,6 +127,7 @@ void find_stable_pairs_parallel(std::vector<Participant>& participants, int n, i
         // proposal containers for each participant
         std::vector<std::vector<int>> proposals(2*n);
         // each man makes their next proposal
+        // std::vector<std::vector<std::vector<int>>> thread_proposals(num_threads, std::vector<std::vector<int>>(2*n));
         #pragma omp parallel for num_threads(num_threads)
         for (unsigned int i = 0; i < free_males.size(); i++) {
             int m = free_males[i];
@@ -198,6 +191,111 @@ void find_stable_pairs_parallel(std::vector<Participant>& participants, int n, i
     }
 }
 
+void find_stable_pairs_pii(std::vector<Participant>& participants, int n, int numPreferences, int num_threads){
+    int iter = 0;
+    // randomized initialization
+    std::vector<int> woman_ids;
+    for (int i = n; i < 2*n; i++) {
+        woman_ids.push_back(i);
+    }
+    std::mt19937 rng(std::time(nullptr));
+    std::shuffle(woman_ids.begin(), woman_ids.end(), rng);
+    for (int i = 0; i < n; i++) {
+        participants[i].current_partner_id = woman_ids[i];
+        participants[woman_ids[i]].current_partner_id = i;
+    }
+
+    // finding unstable pairs
+    std::vector<std::tuple<int, int, int, int>> unstable_pairs;
+    bool stable = false;
+    while (!stable) {
+        iter++;
+        if (iter >= 10000) {
+            std::cerr << "Warning: too many iterations, exiting...\n";
+            return;
+        }
+        stable = true;
+        unstable_pairs.clear();
+        for (int m = 0; m < n; m++) {
+            for (int w : participants[m].preferences) {
+                if (participants[m].current_partner_id == w) {
+                    break; 
+                }
+                int m_current = participants[m].current_partner_id;
+                int w_current = participants[w].current_partner_id;
+                const auto& m_prefs = participants[m].preferences;
+                int w_rank = std::find(m_prefs.begin(), m_prefs.end(), w) - m_prefs.begin();
+                const auto& w_prefs = participants[w].preferences;
+                int m_rank = std::find(w_prefs.begin(), w_prefs.end(), m) - w_prefs.begin();
+                // bool m_prefers_w = m_current == -1 || participants[m].preferences[w] < participants[m].preferences[m_current];
+                // bool w_prefers_m = w_current == -1 || participants[w].preferences[m] < participants[w].preferences[w_current];
+                bool m_prefers_w = m_current == -1 || w_rank < std::find(m_prefs.begin(), m_prefs.end(), m_current) - m_prefs.begin();
+                bool w_prefers_m = w_current == -1 || m_rank < std::find(w_prefs.begin(), w_prefs.end(), w_current) - w_prefs.begin();
+                if (m_prefers_w && w_prefers_m) {
+                    // m and w prefer each other over their current partners
+                    stable = false;
+                    unstable_pairs.emplace_back(m, w, participants[m].preferences[w], participants[w].preferences[m]);
+                }
+            }
+        }
+        if (stable) {
+            break;
+        }
+
+        // iteration phase
+        // select the higest-ranked unstable pairs
+        std::sort(unstable_pairs.begin(), unstable_pairs.end(), [](const auto& a, const auto& b) {
+            int man_pref_a = std::get<2>(a);
+            int man_pref_b = std::get<2>(b);
+            if (man_pref_a != man_pref_b) {
+                return man_pref_a < man_pref_b;
+            }
+            int woman_pref_a = std::get<3>(a);
+            int woman_pref_b = std::get<3>(b);
+            return woman_pref_a < woman_pref_b;
+        });
+
+        // update matching
+
+        std::unordered_set<int> used_men;
+        std::unordered_set<int> used_women;
+        for (const auto& [m, w, man_rank, woman_rank] : unstable_pairs) {
+            if (used_men.count(m) || used_women.count(w)) continue;
+            int m_current = participants[m].current_partner_id;
+            int w_current = participants[w].current_partner_id;
+
+            if (m_current != -1) {
+                participants[m_current].current_partner_id = -1;
+            }
+            if (w_current != -1) {
+                participants[w_current].current_partner_id = -1;
+            }
+            participants[m].current_partner_id = w;
+            participants[w].current_partner_id = m;
+            used_men.insert(m);
+            used_women.insert(w);
+        }
+
+        // greedy fill
+        std::vector<int> unmatched_men;
+        std::vector<int> unmatched_women;
+        for (int i = 0; i < n; i++) {
+            if (participants[i].current_partner_id == -1) {
+                unmatched_men.push_back(i);
+            }
+        }
+        for (int i = n; i < 2*n; i++) {
+            if (participants[i].current_partner_id == -1) {
+                unmatched_women.push_back(i);
+            }
+        }
+        for (size_t i = 0; i < unmatched_men.size(); i++) {
+            participants[unmatched_men[i]].current_partner_id = unmatched_women[i];
+            participants[unmatched_women[i]].current_partner_id = unmatched_men[i];
+        }
+    }
+}
+
 
 int main (int argc, char *argv[]) {
     const auto init_start = std::chrono::steady_clock::now();
@@ -230,7 +328,7 @@ int main (int argc, char *argv[]) {
             prefs[j] = j;
         }
         std::mt19937 rng(i * 1000 + 42); // check this
-        std:shuffle(prefs.begin(), prefs.end(), rng);
+        std::shuffle(prefs.begin(), prefs.end(), rng);
         Participant p;
         p.id = i;
         if (i < num) {
@@ -251,12 +349,12 @@ int main (int argc, char *argv[]) {
     if (mode == "s") {
         std::cout << "Running serial code \n";
         find_stable_pairs(participants, num, num);
+    } else if (mode == "p") {
+        std::cout << "Running shared address code \n";
+        find_stable_pairs_parallel(participants, num, num, num_threads);
     } else if (mode == "p1") {
         std::cout << "Running pii code \n";
-        find_stable_pairs_parallel(participants, num, num, num_threads);
-    } else if (mode == "p2") {
-        std::cout << "Running pii-sc code \n";
-        // find_stable_pairs_parallel_sc(participants, num, preferenceNum);
+        find_stable_pairs_pii(participants, num, num, num_threads);
     } else {
         std::cerr << "Invalid mode: " << mode << '\n';
         exit(EXIT_FAILURE);
