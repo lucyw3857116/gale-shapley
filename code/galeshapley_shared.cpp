@@ -24,17 +24,8 @@ bool is_stable_matching(const std::vector<int>&participants, int n) {
                 break; // found the current partner, no need to check further
             }
             int her_current = participants[preferred_w*(n+1)];
-            int m_rank = -1;
-            int her_current_rank = -1;
-            for (int j = 0; j < n; j++) {
-                int val = participants[preferred_w*(n+1) + 1 + j];
-                if (val == m) {
-                    m_rank = j;
-                }
-                if (val == her_current) {
-                    her_current_rank = j;
-                }
-            }
+            int m_rank = participants[preferred_w*(n+1) + 1 + m];
+            int her_current_rank = participants[preferred_w*(n+1) + 1 + her_current];
             if (m_rank < her_current_rank) {
                 // m prefers preferred_w over w, and preferred_w prefers m over her current partner
                 return false; // not stable
@@ -62,7 +53,6 @@ void find_stable_pairs_parallel(std::vector<int>& participants, int n, int numPr
         // proposal containers for each participant
         std::vector<std::vector<int>> proposals(2*n);
         // each man makes their next proposal
-        // std::vector<std::vector<std::vector<int>>> thread_proposals(num_threads, std::vector<std::vector<int>>(2*n));
         #pragma omp parallel for num_threads(num_threads)
         for (unsigned int i = 0; i < free_males.size(); i++) {
             int m = free_males[i];
@@ -86,17 +76,17 @@ void find_stable_pairs_parallel(std::vector<int>& participants, int n, int numPr
                 if (best_candidate == -1) {
                 best_candidate = m;
                 } else {
-                    int rank_new = -1; 
-                    int rank_best = -1;
-                    for (int i = 0; i < n; i++) {
-                        int val = participants[w*(n+1) + 1 + i];
-                        if (val == m) {
-                            rank_new = i;
-                        }
-                        if (val == best_candidate) {
-                            rank_best = i;
-                        }
-                    }
+                    int rank_new = participants[w*(n+1) + 1 + m]; 
+                    int rank_best = participants[w*(n+1) + 1 + best_candidate];
+                    // for (int i = 0; i < n; i++) {
+                    //     int val = participants[w*(n+1) + 1 + i];
+                    //     if (val == m) {
+                    //         rank_new = i;
+                    //     }
+                    //     if (val == best_candidate) {
+                    //         rank_best = i;
+                    //     }
+                    // }
                     if (rank_new < rank_best) {
                         best_candidate = m;
                     }
@@ -132,7 +122,6 @@ void find_stable_pairs_parallel(std::vector<int>& participants, int n, int numPr
         free_males = new_free_men;
         if (iterations % 1000 == 0 || iterations == 1) {
             const double init_time = (std::chrono::duration_cast<std::chrono::duration<double>>(std::chrono::steady_clock::now() - compute_start).count());
-            // printf("time for iteration %d is %f\n", iterations, init_time);
         }
 
     }
@@ -178,13 +167,19 @@ int main (int argc, char *argv[]) {
         std::shuffle(prefs.begin(), prefs.end(), rng);
 
         // Write to the participants array
-        for (int j = 0; j < num; j++) {
-            if (i < num) {
-                // Man: offset woman IDs by +num
+        
+        if (i < num) {
+            // Man: offset woman IDs by +num
+            for (int j = 0; j < num; j++) {
                 participants[i * (num + 1) + 1 + j] = prefs[j] + num;
-            } else {
-                // Woman: use man IDs directly
-                participants[i * (num + 1) + 1 + j] = prefs[j];
+            }
+        } else {
+            // use inverse ranking
+            // participants[i * (num + 1) + 1 + j] = prefs[j];
+            int w = i - num;
+            for (int rank = 0; rank < num; rank ++) {
+                int man_id = prefs[rank];
+                participants[i * (num + 1) + 1 + man_id] = rank;
             }
         }
     }
