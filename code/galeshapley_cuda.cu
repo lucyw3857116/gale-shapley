@@ -62,41 +62,21 @@ __global__ void stable_matching(int n, int *men_pref, int *women_pref, int *male
         if (threadIdx.x == 0) {
             int flag = (block_changed == 0) ? 1 : 0;
             atomicExch(&d_is_stable_per_block[blockIdx.x], flag);
-            __threadfence();           // push it device‐wide
-
+            __threadfence();
                 
-                // Wait for all blocks to potentially update their flags
-                // This is a naive busy-wait but avoids kernel relaunch
-                // for (int wait = 0; wait < 1000; wait++) { } // Small delay
-                
-                bool done = true;
-                for (int i = 0; i < gridDim.x; i++) {
-                    int v = atomicAdd(&d_is_stable_per_block[i], 0);
-                    if (v == 0) {
-                        done = false; 
-                        break;
-                    }
+            bool done = true;
+            for (int i = 0; i < gridDim.x; i++) {
+                int v = atomicAdd(&d_is_stable_per_block[i], 0);
+                if (v == 0) {
+                    done = false; 
+                    break;
                 }
-                if (done) {
-                    atomicExch(is_stable_global, 1);
-                } else {
-                    atomicExch(is_stable_global, 0);
-                }
-        
-            // bool done = true;
-            // for (int i = 0; i < gridDim.x; i++) {
-            //     int v = atomicAdd(&d_is_stable_per_block[i], 0);
-            //     if (v == 0) {
-            //         done = false; 
-            //         break;
-            //     }
-            // }
-            // if (done) {
-            //     atomicExch(is_stable_global, 1);
-            // } else {
-            //     atomicExch(is_stable_global, 0);
-            // }
-
+            }
+            if (done) {
+                atomicExch(is_stable_global, 1);
+            } else {
+                atomicExch(is_stable_global, 0);
+            }
         }        
         if (threadIdx.x == 0) {
             is_globally_stable = (atomicAdd(is_stable_global,0) != 0);
@@ -106,7 +86,6 @@ __global__ void stable_matching(int n, int *men_pref, int *women_pref, int *male
             break;
         }
     }
-    // __syncthreads();
 }
 
 // __global__ void stable_matching_iter(
@@ -148,16 +127,8 @@ __global__ void stable_matching(int n, int *men_pref, int *women_pref, int *male
 //     }
 // }
 
-__global__ void stable_matching_iter(
-    int n,
-    const int *men_pref,    // size n×n
-    const int *women_pref,  // size n×n (rankings)
-    int *male_match,        // size n, init to -1
-    int *woman_match,       // size n, init to -1
-    int *propose_next,      // size n, init to 0
-    int *women_lock,        // size n, init to 0
-    int *d_changed          // single int flag: set to 1 if any change occurs
-) {    
+__global__ void stable_matching_iter(int n, const int *men_pref, const int *women_pref, int *male_match,
+                                     int *woman_match, int *propose_next, int *women_lock, int *d_changed) {    
     int m_idx = blockIdx.x*blockDim.x + threadIdx.x;
     if (m_idx >= n) return;
 
@@ -375,7 +346,6 @@ int main(int argc, char** argv) {
     
     // kernel
     if (mode == "p") {
-        printf("here");
         stable_matching<<<num_blocks, threads_per_block>>>(n, men_pref, women_pref, male_match, woman_match, propose_next, is_stable, is_stable_global, women_lock, d_is_stable_per_block);
         // stable_matching<<<num_blocks, threads_per_block>>>(n, men_pref, women_pref, male_match, woman_match, propose_next, women_lock, d_is_stable_per_block, d_global_converged);
         cudaDeviceSynchronize();

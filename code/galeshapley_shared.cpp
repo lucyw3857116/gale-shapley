@@ -35,7 +35,7 @@ bool is_stable_matching(const std::vector<int>&participants, int n) {
     return true;
 }
 
-void find_stable_pairs_parallel(std::vector<int>& participants, int n, int numPreferences, int num_threads){
+void find_stable_pairs_parallel(std::vector<int>& participants, int n, int numPreferences, int num_threads, int threshold){
     std::vector<int> propose_next(n, 0);
     std::vector<int> free_males;
     for (int i = 0; i < n; i++) {
@@ -53,7 +53,7 @@ void find_stable_pairs_parallel(std::vector<int>& participants, int n, int numPr
         // proposal containers for each participant
         std::vector<std::vector<int>> proposals(2*n);
         // each man makes their next proposal
-        #pragma omp parallel for num_threads(num_threads)
+        #pragma omp parallel for if(free_males.size() > n/threshold) num_threads(num_threads)
         for (unsigned int i = 0; i < free_males.size(); i++) {
             int m = free_males[i];
             if (propose_next[m] < numPreferences) {
@@ -67,26 +67,17 @@ void find_stable_pairs_parallel(std::vector<int>& participants, int n, int numPr
         std::vector<bool> is_free(n, false);
         std::vector<int> new_free_men;
         // for each woman, choose the best candidate on her list
-        #pragma omp parallel for num_threads(num_threads)
+        #pragma omp parallel for num_threads(num_threads) // no need to add threshold here cause no critical section
         for (int w = n; w < 2*n; w++) {
             int current_partner_id = participants[w*(n+1)];
             int best_candidate = current_partner_id;
             for (int m : proposals[w]) {
                 // if she doesn't have a match yet, choose m
                 if (best_candidate == -1) {
-                best_candidate = m;
+                    best_candidate = m;
                 } else {
                     int rank_new = participants[w*(n+1) + 1 + m]; 
                     int rank_best = participants[w*(n+1) + 1 + best_candidate];
-                    // for (int i = 0; i < n; i++) {
-                    //     int val = participants[w*(n+1) + 1 + i];
-                    //     if (val == m) {
-                    //         rank_new = i;
-                    //     }
-                    //     if (val == best_candidate) {
-                    //         rank_best = i;
-                    //     }
-                    // }
                     if (rank_new < rank_best) {
                         best_candidate = m;
                     }
@@ -135,7 +126,8 @@ int main (int argc, char *argv[]) {
     int opt;
     int num;
     int seed = 42;
-    while ((opt = getopt(argc, argv, "m:n:t:s:")) != -1) {
+    int threshold = 1000000;
+    while ((opt = getopt(argc, argv, "m:n:t:s:h:")) != -1) {
         switch (opt) {
             case 'n':
                 num = atoi(optarg);
@@ -145,6 +137,9 @@ int main (int argc, char *argv[]) {
                 break;
             case 's':
                 seed = atoi(optarg);
+                break;
+            case 'h':
+                threshold = atoi(optarg);
                 break;
             default:
                 std::cerr << "Usage: " << argv[0] << " -f input_filename\n";
@@ -189,7 +184,7 @@ int main (int argc, char *argv[]) {
 
     
     std::cout << "Running shared address code \n";
-    find_stable_pairs_parallel(participants, num, num, num_threads);
+    find_stable_pairs_parallel(participants, num, num, num_threads, threshold);
     
     const double compute_time = std::chrono::duration_cast<std::chrono::duration<double>>(std::chrono::steady_clock::now() - compute_start).count();
     std::cout << "Computation time (sec): " << compute_time << '\n';
