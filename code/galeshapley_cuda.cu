@@ -375,7 +375,6 @@ int main(int argc, char** argv) {
     
     // kernel
     if (mode == "p") {
-        printf("here");
         stable_matching<<<num_blocks, threads_per_block>>>(n, men_pref, women_pref, male_match, woman_match, propose_next, is_stable, is_stable_global, women_lock, d_is_stable_per_block);
         // stable_matching<<<num_blocks, threads_per_block>>>(n, men_pref, women_pref, male_match, woman_match, propose_next, women_lock, d_is_stable_per_block, d_global_converged);
         cudaDeviceSynchronize();
