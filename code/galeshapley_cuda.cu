@@ -109,6 +109,145 @@ __global__ void stable_matching(int n, int *men_pref, int *women_pref, int *male
     // __syncthreads();
 }
 
+// __global__ void stable_matching_iter(
+//     int n,
+//     const int *men_pref,    // size n×n
+//     const int *women_pref,  // size n×n (rankings)
+//     int *male_match,        // size n, init to -1
+//     int *woman_match,       // size n, init to -1
+//     int *propose_next,      // size n, init to 0
+//     int *women_lock,        // size n, init to 0
+//     int *d_changed          // single int flag: set to 1 if any change occurs
+// ) {    
+//     int m_idx = blockIdx.x*blockDim.x + threadIdx.x;
+//     if (m_idx >= n) return;
+
+//     if (m_idx < n && male_match[m_idx] == -1) { // no match
+//         atomicExch(d_changed, 1);
+
+//         int w_idx = men_pref[m_idx * n + propose_next[m_idx]];
+//         bool getLock = false;
+//         do {
+//             if(getLock = atomicCAS(&women_lock[w_idx], 0, 1) == 0) {
+//                 if(woman_match[w_idx] == -1) {
+//                     woman_match[w_idx] = m_idx;
+//                     male_match[m_idx] = w_idx;
+//                 }
+//                 else if(women_pref[w_idx * n + woman_match[w_idx]] > women_pref[w_idx * n + m_idx]) {
+//                     male_match[woman_match[w_idx]] = -1;
+//                     male_match[m_idx] = w_idx;
+//                     woman_match[w_idx] = m_idx;
+//                 }
+//                 propose_next[m_idx]++;
+//             }
+//             if(getLock) {
+//                 atomicExch(&women_lock[w_idx], 0);
+//                 // atomicCAS(&women_lock[w_idx], 1, 0);
+//             }
+//         } while(!getLock);    
+//     }
+// }
+
+__global__ void stable_matching_iter(
+    int n,
+    const int *men_pref,    // size n×n
+    const int *women_pref,  // size n×n (rankings)
+    int *male_match,        // size n, init to -1
+    int *woman_match,       // size n, init to -1
+    int *propose_next,      // size n, init to 0
+    int *women_lock,        // size n, init to 0
+    int *d_changed          // single int flag: set to 1 if any change occurs
+) {    
+    int m_idx = blockIdx.x*blockDim.x + threadIdx.x;
+    if (m_idx >= n) return;
+
+    if (male_match[m_idx] == -1 && propose_next[m_idx] < n) { // no match and still has women to propose to
+        atomicExch(d_changed, 1);
+
+        // Try to propose until either get accepted or run out of women
+        bool proposalHandled = false;
+        while (!proposalHandled && propose_next[m_idx] < n) {
+            int w_idx = men_pref[m_idx * n + propose_next[m_idx]];
+            bool getLock = false;
+            do {
+                if(getLock = atomicCAS(&women_lock[w_idx], 0, 1) == 0) {
+                    if(woman_match[w_idx] == -1) {
+                        woman_match[w_idx] = m_idx;
+                        male_match[m_idx] = w_idx;
+                        proposalHandled = true;
+                    }
+                    else if(women_pref[w_idx * n + woman_match[w_idx]] > women_pref[w_idx * n + m_idx]) {
+                        male_match[woman_match[w_idx]] = -1;
+                        male_match[m_idx] = w_idx;
+                        woman_match[w_idx] = m_idx;
+                        proposalHandled = true;
+                    }
+                    propose_next[m_idx]++;
+                }
+                if(getLock) {
+                    atomicExch(&women_lock[w_idx], 0);
+                    // atomicCAS(&women_lock[w_idx], 1, 0);
+                }
+            } while(!getLock);    
+        }
+    }
+}
+
+
+__global__ void stable_matching_block(int n, const int* men_pref, const int* women_pref,
+                                      int* male_match, int* woman_match, int* propose_next, int* women_lock) {
+    
+    // for blocked
+    int chunk   = (n + blockDim.x - 1) / blockDim.x;
+    int start = threadIdx.x * chunk;
+    int end   = min(start + chunk, n);
+
+    __shared__ bool block_changed;
+
+    while (true) {
+        if (threadIdx.x == 0) {
+            block_changed = false;
+        }
+        __syncthreads();
+
+        // for (int m_idx = start; m_idx < end; ++m_idx) { // block
+        for (int m_idx = threadIdx.x; m_idx < n; m_idx+=blockDim.x) { // interleaved
+            if (male_match[m_idx] == -1 && propose_next[m_idx] < n) {
+                block_changed = true;
+                int p = propose_next[m_idx];
+                int w_idx = men_pref[m_idx*n + p];
+
+                bool getLock = false;
+                do {
+                    if(getLock = atomicCAS(&women_lock[w_idx], 0, 1) == 0) {
+                        if(woman_match[w_idx] == -1) {
+                            woman_match[w_idx] = m_idx;
+                            male_match[m_idx] = w_idx;
+                        }
+                        else if(women_pref[w_idx * n + woman_match[w_idx]] > women_pref[w_idx * n + m_idx]) {
+                            male_match[woman_match[w_idx]] = -1;
+                            male_match[m_idx] = w_idx;
+                            woman_match[w_idx] = m_idx;
+                        }
+                        propose_next[m_idx]++;
+                    }
+                    if(getLock) {
+                        atomicExch(&women_lock[w_idx], 0);
+                        // atomicCAS(&women_lock[w_idx], 1, 0);
+                    }
+                } while(!getLock);
+            }
+        }
+
+        __syncthreads();
+
+        if (!block_changed) break;
+        __syncthreads();
+    }
+}
+
+
+
 bool is_stable_func(const std::vector<int>& men_data, const std::vector<int>& women_data, const std::vector<int>& men_match, int n) {
     int cnt = 0;
 
@@ -155,10 +294,14 @@ bool is_stable_func(const std::vector<int>& men_data, const std::vector<int>& wo
 int main(int argc, char** argv) {
     int opt;
     int n;
+    std::string mode;
     while ((opt = getopt(argc, argv, "m:n:")) != -1) {
         switch (opt) {
             case 'n':
                 n = atoi(optarg);
+                break;
+            case 'm':
+                mode = optarg;
                 break;
             default:
                 std::cerr << "Usage: " << argv[0] << " -f input_filename\n";
@@ -176,7 +319,7 @@ int main(int argc, char** argv) {
         for (int j = 0; j < n; ++j) {
             prefs[j] = j;
         }
-        std::mt19937 rng(i * 1000 + 42);
+        std::mt19937 rng(i * 1000 + 10);
         std::shuffle(prefs.begin(), prefs.end(), rng);
 
         if (i < n) {
@@ -231,12 +374,64 @@ int main(int argc, char** argv) {
     cudaMemset(d_global_converged, 0, sizeof(int));
     
     // kernel
-    stable_matching<<<num_blocks, threads_per_block>>>(n, men_pref, women_pref, male_match, woman_match, propose_next, is_stable, is_stable_global, women_lock, d_is_stable_per_block);
-    // stable_matching<<<num_blocks, threads_per_block>>>(n, men_pref, women_pref, male_match, woman_match, propose_next, women_lock, d_is_stable_per_block, d_global_converged);
-    cudaDeviceSynchronize();
-    cudaError_t err = cudaGetLastError();
-    if (err != cudaSuccess) {
-        std::cerr << "CUDA post-sync error: " << cudaGetErrorString(err) << std::endl;
+    if (mode == "p") {
+        printf("here");
+        stable_matching<<<num_blocks, threads_per_block>>>(n, men_pref, women_pref, male_match, woman_match, propose_next, is_stable, is_stable_global, women_lock, d_is_stable_per_block);
+        // stable_matching<<<num_blocks, threads_per_block>>>(n, men_pref, women_pref, male_match, woman_match, propose_next, women_lock, d_is_stable_per_block, d_global_converged);
+        cudaDeviceSynchronize();
+        cudaError_t err = cudaGetLastError();
+        if (err != cudaSuccess) {
+            std::cerr << "CUDA post-sync error: " << cudaGetErrorString(err) << std::endl;
+        }    
+    } else if (mode == "b") {
+        int threads = min(n, 1024);
+        stable_matching_block<<<1, threads>>>(n, men_pref, women_pref, male_match, woman_match, propose_next, women_lock);
+        cudaDeviceSynchronize();
+        cudaError_t err = cudaGetLastError();
+        if (err != cudaSuccess) {
+            std::cerr << "CUDA post-sync error: " << cudaGetErrorString(err) << std::endl;
+        }    
+
+    } else if (mode == "k") {
+        int *d_changed;
+        cudaMalloc(&d_changed, sizeof(int));
+                
+        int h_changed;
+        int max_iterations = n * n; // Safety limit to prevent infinite loops
+        int iteration = 0;
+        
+        do {
+            h_changed = 0;
+            cudaMemcpy(d_changed, &h_changed, sizeof(int), cudaMemcpyHostToDevice);
+            
+            // Launch one iteration
+            stable_matching_iter<<<num_blocks, threads_per_block>>>(
+                n, men_pref, women_pref, male_match, woman_match, 
+                propose_next, women_lock, d_changed);
+            cudaDeviceSynchronize();
+    
+            // Check for kernel errors
+            cudaError_t err = cudaGetLastError();
+            if (err != cudaSuccess) {
+                std::cerr << "CUDA error in iteration " << iteration << ": " 
+                          << cudaGetErrorString(err) << std::endl;
+                break;
+            }
+            
+            // Fetch back whether anyone changed
+            cudaMemcpy(&h_changed, d_changed, sizeof(int), cudaMemcpyDeviceToHost);
+            
+            iteration++;
+            if (iteration > max_iterations) {
+                std::cerr << "Warning: Reached maximum iterations without convergence\n";
+                break;
+            }
+        } while (h_changed != 0);
+        
+        std::cout << "Algorithm converged after " << iteration << " iterations\n";
+        
+        // Clean up
+        cudaFree(d_changed);    
     }
     
    
