@@ -231,12 +231,12 @@ int main (int argc, char *argv[]) {
     const auto init_start = std::chrono::steady_clock::now();
     int pid;
     int nproc;
-  
+  
     // Initialize MPI
     MPI_Init(&argc, &argv);
     // Get process rank
     MPI_Comm_rank(MPI_COMM_WORLD, &pid);
-    // Get total number of processes  
+    // Get total number of processes  
     MPI_Comm_size(MPI_COMM_WORLD, &nproc);
     
     std::string mode;
@@ -285,7 +285,7 @@ int main (int argc, char *argv[]) {
                 prefs[j] = j;
             }
     
-            std::mt19937 rng(i * 1000 + seed);  // stable deterministic shuffle
+            std::mt19937 rng(i * 1000 + seed);  // stable deterministic shuffle
             std::shuffle(prefs.begin(), prefs.end(), rng);
     
             // Write to the participants array
