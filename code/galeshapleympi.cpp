@@ -282,46 +282,33 @@ int main (int argc, char *argv[]) {
     int end_idx = std::min((pid + 1) * typePerProc, num);
     std::vector<int> men((end_idx - start_idx) * (num + 1));
     std::vector<int> women((end_idx - start_idx) * (num + 1));
-    std::vector<int> participants(num*2 * (num + 1));
+    std::vector<int> participants;
 
     if (pid == 0) {
+        participants.resize(num*2 * (num + 1));
         for (int i = 0; i < num * 2; i++) {
-            // Set current partner to -1
             participants[i * (num + 1)] = -1;
 
-            // Create a preference list
             std::vector<int> prefs(num);
             for (int j = 0; j < num; j++) {
                 prefs[j] = j;
             }
 
-            std::mt19937 rng(i * 1000 + seed);  // stable deterministic shuffle
+            std::mt19937 rng(i * 1000 + seed);  
             std::shuffle(prefs.begin(), prefs.end(), rng);
 
-            // Write to the participants array
             for (int j = 0; j < num; j++) {
                 if (i < num) {
-                    // Man: offset woman IDs by +num
                     participants[i * (num + 1) + 1 + j] = prefs[j] + num;
                 } else {
-                    // Woman: use man IDs directly
                     participants[i * (num + 1) + 1 + j] = prefs[j];
                 }
             }
         }
 
     }
-    MPI_Bcast(participants.data(), num*2*(1+num), MPI_INT, 0, MPI_COMM_WORLD);
-    MPI_Barrier(MPI_COMM_WORLD);
-    for (int i = 0; i < num*2; i++) {
-        if (i < num && (i >= start_idx && i < end_idx)) {
-            std::copy(participants.begin() + i*(num+1), participants.begin() + (i+1)*(num+1), men.begin() + (i - start_idx)*(num+1));
-        }
-        if (i >= num && (i-num >= start_idx && i-num < end_idx)) {
-            std::copy(participants.begin() + i*(num+1), participants.begin() + (i+1)*(num+1), women.begin() + (i - num - start_idx)*(num+1));
-        }
-    }
-    
+    MPI_Scatter(participants.data(), ((end_idx - start_idx) * (num + 1)), MPI_INT, men.data(), ((end_idx - start_idx) * (num + 1)), MPI_INT, 0, MPI_COMM_WORLD);
+    MPI_Scatter(participants.data() + num * (num + 1), ((end_idx - start_idx) * (num + 1)), MPI_INT, women.data(), ((end_idx - start_idx) * (num + 1)), MPI_INT, 0, MPI_COMM_WORLD);
 
 
     
