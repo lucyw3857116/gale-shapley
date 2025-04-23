@@ -26,17 +26,8 @@ bool is_stable_matching(const std::vector<int>&participants, int n) {
                 break; // found the current partner, no need to check further
             }
             int her_current = participants[preferred_w*(n+1)];
-            int m_rank = -1;
-            int her_current_rank = -1;
-            for (int j = 0; j < n; j++) {
-                int val = participants[preferred_w*(n+1) + 1 + j];
-                if (val == m) {
-                    m_rank = j;
-                }
-                if (val == her_current) {
-                    her_current_rank = j;
-                }
-            }
+            int m_rank = participants[preferred_w*(n+1) + 1 + m];
+            int her_current_rank = participants[preferred_w*(n+1) + 1 + her_current];
             if (m_rank < her_current_rank) {
                 // m prefers preferred_w over w, and preferred_w prefers m over her current partner
                 return false; // not stable
@@ -45,6 +36,7 @@ bool is_stable_matching(const std::vector<int>&participants, int n) {
     }
     return true;
 }
+
 
 void find_stable_pairs_parallel(std::vector<int>& men, std::vector<int>& women, int n, int numPreferences, int nproc, int pid){
     int typePerProc = (n + nproc - 1) / nproc; // nproc is multiple of n
@@ -144,8 +136,8 @@ void find_stable_pairs_parallel(std::vector<int>& men, std::vector<int>& women, 
                 if (best_candidate == -1) {
                     best_candidate = m;
                 } else {
-                    int rank_new = std::find(prefs.begin(), prefs.end(), m) - prefs.begin();
-                    int rank_best = std::find(prefs.begin(), prefs.end(), best_candidate) - prefs.begin();
+                    int rank_new = women[w_base + 1 + m];
+                    int rank_best = women[w_base + 1 + best_candidate];
                     if (rank_new < rank_best) {
                         best_candidate = m;
                     }
@@ -205,16 +197,13 @@ void find_stable_pairs_parallel(std::vector<int>& men, std::vector<int>& women, 
             bool accepted = recv_response_data[i+2];
         
             int local_id = m - start_idx;
-            // printf("local_id %d local_size %d m %d w %d accepted %d\n", local_id, local_size, m, w, accepted);
             if (accepted) {
                 men[local_id * (n + 1)] = w;
             } else {
                 men[local_id * (n + 1)] = -1;
                 // man remains unmatched; will propose to next woman next round
             }
-            // printf("m %d w %d AFTER accepted %d\n", m, w, accepted);
         }
-        // free_males = new_free_males;
         free_males.clear();
         for (int i = 0; i < local_size; i++) {
             if (men[i * (n + 1)] == -1 && propose_next[i] < numPreferences) {
@@ -287,21 +276,31 @@ int main (int argc, char *argv[]) {
     if (pid == 0) {
         participants.resize(num*2 * (num + 1));
         for (int i = 0; i < num * 2; i++) {
+            // Set current partner to -1
             participants[i * (num + 1)] = -1;
-
+    
+            // Create a preference list
             std::vector<int> prefs(num);
             for (int j = 0; j < num; j++) {
                 prefs[j] = j;
             }
-
-            std::mt19937 rng(i * 1000 + seed);  
+    
+            std::mt19937 rng(i * 1000 + seed);  // stable deterministic shuffle
             std::shuffle(prefs.begin(), prefs.end(), rng);
-
-            for (int j = 0; j < num; j++) {
-                if (i < num) {
+    
+            // Write to the participants array
+            
+            if (i < num) {
+                // Man: offset woman IDs by +num
+                for (int j = 0; j < num; j++) {
                     participants[i * (num + 1) + 1 + j] = prefs[j] + num;
-                } else {
-                    participants[i * (num + 1) + 1 + j] = prefs[j];
+                }
+            } else {
+                // use inverse ranking
+                int w = i - num;
+                for (int rank = 0; rank < num; rank ++) {
+                    int man_id = prefs[rank];
+                    participants[i * (num + 1) + 1 + man_id] = rank;
                 }
             }
         }
@@ -329,45 +328,6 @@ int main (int argc, char *argv[]) {
     MPI_Barrier(MPI_COMM_WORLD);
     const auto finalizing_start = std::chrono::steady_clock::now();
 
-    //TODO ring reduce to get all the final pairings
-    // std::vector<int> local_results;
-    // for (int i = 0; i < men.size() / (num + 1); i++) {
-    //     int partner = men[i * (num + 1)];
-    //     if (partner != -1) {
-    //         int man_global_id = start_idx + i;
-    //         local_results.push_back(man_global_id);
-    //         local_results.push_back(partner);
-    //     }
-    // }
-
-    // if (pid != 0) {
-    //     int send_size = local_results.size();
-    //     MPI_Send(&send_size, 1, MPI_INT, 0, 0, MPI_COMM_WORLD);
-    //     MPI_Send(local_results.data(), send_size, MPI_INT, 0, 1, MPI_COMM_WORLD);
-        
-    // } else {
-    //     // Include PID 0's own results
-    //     for (size_t i = 0; i < local_results.size(); i += 2) {
-    //         int m = local_results[i];
-    //         int w = local_results[i + 1];
-    //         participants[m * (num + 1)] = w;
-    //         participants[w * (num + 1)] = m;
-    //     }
-
-    //     for (int src = 1; src < nproc; src++) {
-    //         int recv_size;
-    //         MPI_Recv(&recv_size, 1, MPI_INT, src, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-    //         std::vector<int> recv_data(recv_size);
-    //         MPI_Recv(recv_data.data(), recv_size, MPI_INT, src, 1, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-    //         for (int i = 0; i < recv_size; i+=2) {
-    //             int m = recv_data[i];
-    //             int w = recv_data[i+1];
-    //             participants[m * (num + 1)] = w;
-    //             participants[w * (num + 1)] = m;
-    //         }
-
-    //     }
-    // }
     // Collect local man-to-woman matchings
     std::vector<int> local_men_results;
     for (int i = 0; i < men.size() / (num + 1); i++) {
