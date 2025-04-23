@@ -165,20 +165,26 @@ int main (int argc, char *argv[]) {
     
     std::vector<int> participants(num*2 * (num + 1));
     for (int i = 0; i < num * 2; i++) {
+        // Set current partner to -1
         participants[i * (num + 1)] = -1;
+
+        // Create a preference list
         std::vector<int> prefs(num);
         for (int j = 0; j < num; j++) {
             prefs[j] = j;
         }
-        std::mt19937 rng(i * 1000 + seed); 
+
+        std::mt19937 rng(i * 1000 + seed);  // stable deterministic shuffle
         std::shuffle(prefs.begin(), prefs.end(), rng);
-        if (i < num) {
-            for (int j = i * (num + 1) + 1; j < (i + 1) * (num + 1); j++) {
-                participants[j] = prefs[j - i * (num + 1)] + num;
-            }
-        } else {
-            for (int j = i * (num + 1) + 1; j < (i + 1) * (num + 1); j++) {
-                participants[j] = prefs[j - i * (num + 1)];
+
+        // Write to the participants array
+        for (int j = 0; j < num; j++) {
+            if (i < num) {
+                // Man: offset woman IDs by +num
+                participants[i * (num + 1) + 1 + j] = prefs[j] + num;
+            } else {
+                // Woman: use man IDs directly
+                participants[i * (num + 1) + 1 + j] = prefs[j];
             }
         }
     }
