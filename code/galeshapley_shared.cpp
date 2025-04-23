@@ -51,23 +51,49 @@ void find_stable_pairs_parallel(std::vector<int>& participants, int n, int numPr
             compute_start = std::chrono::steady_clock::now();
         }
         // proposal containers for each participant
-        std::vector<std::vector<int>> proposals(2*n);
+        // std::vector<std::vector<int>> proposals(2*n);
+        std::vector<std::vector<std::vector<int>>> thread_proposals(num_threads, std::vector<std::vector<int>>(2*n));
         // each man makes their next proposal
-        #pragma omp parallel for if(free_males.size() > n/threshold) num_threads(num_threads)
-        for (unsigned int i = 0; i < free_males.size(); i++) {
-            int m = free_males[i];
-            if (propose_next[m] < numPreferences) {
-                int f = participants[m*(n+1) + 1 + propose_next[m]];
-                #pragma omp critical
-                proposals[f].push_back(m);
-                propose_next[m]++;
+        // #pragma omp parallel for if(free_males.size() > n/threshold) num_threads(num_threads)
+        // for (unsigned int i = 0; i < free_males.size(); i++) {
+        //     int m = free_males[i];
+        //     if (propose_next[m] < numPreferences) {
+        //         int f = participants[m*(n+1) + 1 + propose_next[m]];
+        //         #pragma omp critical
+        //         proposals[f].push_back(m);
+        //         propose_next[m]++;
+        //     }
+        // }
+        #pragma omp parallel num_threads(num_threads) if(free_males.size() > n/threshold)
+        {
+            int tid = omp_get_thread_num();
+            #pragma omp for
+            for (int i = 0; i < free_males.size(); i++) {
+                int m = free_males[i];
+                if (propose_next[m] < numPreferences) {
+                    int f = participants[m*(n+1) + 1 + propose_next[m]];
+                    thread_proposals[tid][f].push_back(m);
+                    propose_next[m]++;
+                }
             }
         }
 
+        std::vector<std::vector<int>> proposals(2 * n);
+        for (int tid = 0; tid < num_threads; tid++) {
+            for (int i = 0; i < 2 * n; i++) {
+                proposals[i].insert(proposals[i].end(),
+                                    thread_proposals[tid][i].begin(),
+                                    thread_proposals[tid][i].end());
+            }
+        }
+
+
+
         std::vector<bool> is_free(n, false);
         std::vector<int> new_free_men;
+        std::vector<std::vector<int>> thread_new_free_men(num_threads);
         // for each woman, choose the best candidate on her list
-        #pragma omp parallel for num_threads(num_threads) // no need to add threshold here cause no critical section
+        #pragma omp parallel for if(free_males.size() > n/threshold) num_threads(num_threads)
         for (int w = n; w < 2*n; w++) {
             int current_partner_id = participants[w*(n+1)];
             int best_candidate = current_partner_id;
@@ -89,14 +115,24 @@ void find_stable_pairs_parallel(std::vector<int>& participants, int n, int numPr
                 if (current_partner_id != -1) {
                     participants[current_partner_id*(n+1)] = -1;
                     if (!is_free[current_partner_id]) {
-                        #pragma omp critical
-                        new_free_men.push_back(current_partner_id);
+                        // #pragma omp critical
+                        // new_free_men.push_back(current_partner_id);
+                        int tid = omp_get_thread_num();
+                        thread_new_free_men[tid].push_back(current_partner_id);
+
                         is_free[current_partner_id] = true;
                     }
                 }
                 participants[w*(n+1)] = best_candidate;
                 participants[best_candidate*(n+1)] = w;
             }
+        }
+
+        // merge thread-local new_free_men into one global vector
+        for (int tid = 0; tid < num_threads; ++tid) {
+            new_free_men.insert(new_free_men.end(),
+                                thread_new_free_men[tid].begin(),
+                                thread_new_free_men[tid].end());
         }
 
         // check if a man is unmatched and still has someone left to propose to
