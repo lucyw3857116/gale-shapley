@@ -15,25 +15,24 @@
 
 #include "galeshapley.h"
 
-bool is_stable_matching(const std::vector<Participant>&participants, int n) {
+bool is_stable_matching(const std::vector<int>&participants, int n) {
     for (int m = 0; m < n; m++) {
-        int w = participants[m].current_partner_id;
-        const auto& m_prefs = participants[m].preferences;
-        const auto& w_prefs = participants[w].preferences;
-        for (int preferred_w : m_prefs) {
+        int w = participants[m*(n+1)];
+        for (int i = 0; i < n; i++) {
+            int preferred_w = participants[m*(n+1) + 1 + i];
             if (preferred_w == w) {
                 break; // found the current partner, no need to check further
             }
-            int her_current = participants[preferred_w].current_partner_id;
-            const auto& her_prefs = participants[preferred_w].preferences;
+            int her_current = participants[preferred_w*(n+1)];
             int m_rank = -1;
             int her_current_rank = -1;
-            for (int i = 0; i < her_prefs.size(); i++) {
-                if (her_prefs[i] == m) {
-                    m_rank = i;
+            for (int j = 0; j < n; j++) {
+                int val = participants[preferred_w*(n+1) + 1 + j];
+                if (val == m) {
+                    m_rank = j;
                 }
-                if (her_prefs[i] == her_current) {
-                    her_current_rank = i;
+                if (val == her_current) {
+                    her_current_rank = j;
                 }
             }
             if (m_rank < her_current_rank) {
@@ -45,7 +44,7 @@ bool is_stable_matching(const std::vector<Participant>&participants, int n) {
     return true;
 }
 
-void find_stable_pairs_parallel(std::vector<Participant>& participants, int n, int numPreferences, int num_threads){
+void find_stable_pairs_parallel(std::vector<int>& participants, int n, int numPreferences, int num_threads){
     std::vector<int> propose_next(n, 0);
     std::vector<int> free_males;
     for (int i = 0; i < n; i++) {
@@ -68,7 +67,7 @@ void find_stable_pairs_parallel(std::vector<Participant>& participants, int n, i
         for (unsigned int i = 0; i < free_males.size(); i++) {
             int m = free_males[i];
             if (propose_next[m] < numPreferences) {
-                int f = participants[m].preferences[propose_next[m]];
+                int f = participants[m*(n+1) + 1 + propose_next[m]];
                 #pragma omp critical
                 proposals[f].push_back(m);
                 propose_next[m]++;
@@ -80,16 +79,24 @@ void find_stable_pairs_parallel(std::vector<Participant>& participants, int n, i
         // for each woman, choose the best candidate on her list
         #pragma omp parallel for num_threads(num_threads)
         for (int w = n; w < 2*n; w++) {
-            int current_partner_id = participants[w].current_partner_id;
+            int current_partner_id = participants[w*(n+1)];
             int best_candidate = current_partner_id;
             for (int m : proposals[w]) {
                 // if she doesn't have a match yet, choose m
                 if (best_candidate == -1) {
                 best_candidate = m;
                 } else {
-                    std::vector<int> prefs = participants[w].preferences;
-                    int rank_new = std::find(prefs.begin(), prefs.end(), m) - prefs.begin();
-                    int rank_best = std::find(prefs.begin(), prefs.end(), best_candidate) - prefs.begin();
+                    int rank_new = -1; 
+                    int rank_best = -1;
+                    for (int i = 0; i < n; i++) {
+                        int val = participants[w*(n+1) + 1 + i];
+                        if (val == m) {
+                            rank_new = i;
+                        }
+                        if (val == best_candidate) {
+                            rank_best = i;
+                        }
+                    }
                     if (rank_new < rank_best) {
                         best_candidate = m;
                     }
@@ -99,22 +106,22 @@ void find_stable_pairs_parallel(std::vector<Participant>& participants, int n, i
             if (best_candidate != current_partner_id) {
                 // if previously had a match, free the former match
                 if (current_partner_id != -1) {
-                    participants[current_partner_id].current_partner_id = -1;
+                    participants[current_partner_id*(n+1)] = -1;
                     if (!is_free[current_partner_id]) {
                         #pragma omp critical
                         new_free_men.push_back(current_partner_id);
                         is_free[current_partner_id] = true;
                     }
                 }
-                participants[w].current_partner_id = best_candidate;
-                participants[best_candidate].current_partner_id = w;
+                participants[w*(n+1)] = best_candidate;
+                participants[best_candidate*(n+1)] = w;
             }
         }
 
         // check if a man is unmatched and still has someone left to propose to
         // add him to the free men list
         for (int m = 0; m < n; m++) {
-            if (participants[m].current_partner_id == -1 && 
+            if (participants[m*(n+1)] == -1 && 
                 propose_next[m] < numPreferences) {
                     if (!is_free[m]) {
                         new_free_men.push_back(m);
@@ -125,7 +132,7 @@ void find_stable_pairs_parallel(std::vector<Participant>& participants, int n, i
         free_males = new_free_men;
         if (iterations % 1000 == 0 || iterations == 1) {
             const double init_time = (std::chrono::duration_cast<std::chrono::duration<double>>(std::chrono::steady_clock::now() - compute_start).count());
-            printf("time for iteration %d is %f\n", iterations, init_time);
+            // printf("time for iteration %d is %f\n", iterations, init_time);
         }
 
     }
@@ -156,28 +163,24 @@ int main (int argc, char *argv[]) {
         }
     }
     
-    std::vector<Participant> participants(num*2);
-    // std::random_device rd;
-    // std::mt19937 rng(rd());
+    std::vector<int> participants(num*2 * (num + 1));
     for (int i = 0; i < num * 2; i++) {
+        participants[i * (num + 1)] = -1;
         std::vector<int> prefs(num);
         for (int j = 0; j < num; j++) {
             prefs[j] = j;
         }
-        std::mt19937 rng(i * 1000 + seed); // check this
+        std::mt19937 rng(i * 1000 + seed); 
         std::shuffle(prefs.begin(), prefs.end(), rng);
-        Participant p;
-        p.id = i;
         if (i < num) {
-            for (int j = 0; j < num; j++) {
-                p.preferences.push_back(prefs[j] + num);
+            for (int j = i * (num + 1) + 1; j < (i + 1) * (num + 1); j++) {
+                participants[j] = prefs[j - i * (num + 1)] + num;
             }
         } else {
-            for (int j = 0; j < num; j++) {
-                p.preferences.push_back(prefs[j]);
+            for (int j = i * (num + 1) + 1; j < (i + 1) * (num + 1); j++) {
+                participants[j] = prefs[j - i * (num + 1)];
             }
         }
-        participants[i] = p;
     }
     const double init_time = std::chrono::duration_cast<std::chrono::duration<double>>(std::chrono::steady_clock::now() - init_start).count();
     std::cout << "Initialization time (sec): " << std::fixed << std::setprecision(15) << init_time << '\n';
