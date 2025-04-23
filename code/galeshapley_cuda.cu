@@ -13,21 +13,26 @@
 #include "galeshapley.h"
 
 __global__ void stable_matching(int n, int *men_pref, int *women_pref, int *male_match, int *woman_match, 
-                                int *propose_next, int *is_stable, int *is_stable_global, int *women_lock) {
+                                int *propose_next, int *is_stable, int *is_stable_global, int *women_lock,
+                                int *d_is_stable_per_block) {
 
     int m_idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (m_idx >= n) {
-        return; // prevent out of bounds
-    }
+    // if (m_idx >= n) {
+    //     return; // prevent out of bounds
+    // }
+
+    __shared__ int block_changed;
+    __shared__ int is_globally_stable;
 
     while (true) {
-        __syncthreads();
-        // a stable matching has been found
-        if (*is_stable_global == 0) {
-            break;
+        if (threadIdx.x == 0) {
+            block_changed = 0;
+            is_globally_stable = 0;
         }
+        __syncthreads();
 
-        if (male_match[m_idx] == -1) { // no match
+        if (m_idx < n && male_match[m_idx] == -1) { // no match
+            block_changed = 1;
             *is_stable = 0; // not stable
 
             int w_idx = men_pref[m_idx * n + propose_next[m_idx]];
@@ -47,21 +52,61 @@ __global__ void stable_matching(int n, int *men_pref, int *women_pref, int *male
                     propose_next[m_idx]++;
                 }
                 if(getLock) {
-                    atomicCAS(&women_lock[w_idx], 1, 0);
+                    atomicExch(&women_lock[w_idx], 0);
+                    // atomicCAS(&women_lock[w_idx], 1, 0);
                 }
             } while(!getLock);    
         }
-
         __syncthreads();
-        if (threadIdx.x == 0 && *is_stable == 1) {
-            // stable from prev iteration so globally stable
-            *is_stable_global = 0;
-        } else if (threadIdx.x == 0 && *is_stable == 0) {
-            // if any changes in next iteration set back to 0
-            *is_stable = 1;
+
+        if (threadIdx.x == 0) {
+            int flag = (block_changed == 0) ? 1 : 0;
+            atomicExch(&d_is_stable_per_block[blockIdx.x], flag);
+            __threadfence();           // push it device‐wide
+
+                
+                // Wait for all blocks to potentially update their flags
+                // This is a naive busy-wait but avoids kernel relaunch
+                // for (int wait = 0; wait < 1000; wait++) { } // Small delay
+                
+                bool done = true;
+                for (int i = 0; i < gridDim.x; i++) {
+                    int v = atomicAdd(&d_is_stable_per_block[i], 0);
+                    if (v == 0) {
+                        done = false; 
+                        break;
+                    }
+                }
+                if (done) {
+                    atomicExch(is_stable_global, 1);
+                } else {
+                    atomicExch(is_stable_global, 0);
+                }
+        
+            // bool done = true;
+            // for (int i = 0; i < gridDim.x; i++) {
+            //     int v = atomicAdd(&d_is_stable_per_block[i], 0);
+            //     if (v == 0) {
+            //         done = false; 
+            //         break;
+            //     }
+            // }
+            // if (done) {
+            //     atomicExch(is_stable_global, 1);
+            // } else {
+            //     atomicExch(is_stable_global, 0);
+            // }
+
+        }        
+        if (threadIdx.x == 0) {
+            is_globally_stable = (atomicAdd(is_stable_global,0) != 0);
+        }
+        __syncthreads();
+        if (is_globally_stable) {
+            break;
         }
     }
-    __syncthreads();
+    // __syncthreads();
 }
 
 bool is_stable_func(const std::vector<int>& men_data, const std::vector<int>& women_data, const std::vector<int>& men_match, int n) {
@@ -175,16 +220,26 @@ int main(int argc, char** argv) {
     cudaMemcpy(is_stable, &one, sizeof(int), cudaMemcpyHostToDevice);
     cudaMemcpy(is_stable_global, &one, sizeof(int), cudaMemcpyHostToDevice);
 
-    // kernel
     int threads_per_block = 256; // TODO
     int num_blocks = (n + threads_per_block - 1) / threads_per_block;
-    stable_matching<<<1, n>>>(n, men_pref, women_pref, male_match, woman_match, propose_next, is_stable, is_stable_global, women_lock);
+
+    int *d_is_stable_per_block;
+    cudaMalloc(&d_is_stable_per_block, num_blocks * sizeof(int));
+    cudaMemset(d_is_stable_per_block, 0, (num_blocks) * sizeof(int));
+    int *d_global_converged;
+    cudaMalloc(&d_global_converged, sizeof(int));
+    cudaMemset(d_global_converged, 0, sizeof(int));
+    
+    // kernel
+    stable_matching<<<num_blocks, threads_per_block>>>(n, men_pref, women_pref, male_match, woman_match, propose_next, is_stable, is_stable_global, women_lock, d_is_stable_per_block);
+    // stable_matching<<<num_blocks, threads_per_block>>>(n, men_pref, women_pref, male_match, woman_match, propose_next, women_lock, d_is_stable_per_block, d_global_converged);
     cudaDeviceSynchronize();
     cudaError_t err = cudaGetLastError();
     if (err != cudaSuccess) {
         std::cerr << "CUDA post-sync error: " << cudaGetErrorString(err) << std::endl;
     }
     
+   
     const double compute_time = std::chrono::duration_cast<std::chrono::duration<double>>(std::chrono::steady_clock::now() - compute_start).count();
     std::cout << "Computation time (sec): " << compute_time << '\n';
 

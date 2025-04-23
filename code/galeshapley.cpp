@@ -319,8 +319,7 @@ int main (int argc, char *argv[]) {
     int num_threads = 1;
     int opt;
     int num;
-    int seed = 42;
-    while ((opt = getopt(argc, argv, "m:n:t:s:")) != -1) {
+    while ((opt = getopt(argc, argv, "m:n:t:")) != -1) {
         switch (opt) {
             case 'n':
                 num = atoi(optarg);
@@ -331,9 +330,6 @@ int main (int argc, char *argv[]) {
             case 't':
                 num_threads = atoi(optarg);
                 break;
-            case 's':
-                seed = atoi(optarg);
-                break;
             default:
                 std::cerr << "Usage: " << argv[0] << " -f input_filename\n";
                 exit(EXIT_FAILURE);
@@ -341,14 +337,13 @@ int main (int argc, char *argv[]) {
     }
     
     std::vector<Participant> participants(num*2);
-    // std::random_device rd;
-    // std::mt19937 rng(rd());
+    
     for (int i = 0; i < num * 2; i++) {
         std::vector<int> prefs(num);
         for (int j = 0; j < num; j++) {
             prefs[j] = j;
         }
-        std::mt19937 rng(i * 1000 + seed); // check this
+        std::mt19937 rng(i * 1000 + 42); // check this
         std::shuffle(prefs.begin(), prefs.end(), rng);
         Participant p;
         p.id = i;
