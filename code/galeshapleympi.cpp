@@ -38,13 +38,12 @@ bool is_stable_matching(const std::vector<int>&participants, int n) {
 }
 
 
-void find_stable_pairs_parallel(std::vector<int>& men, std::vector<int>& women, int n, int numPreferences, int nproc, int pid){
+void find_stable_pairs_parallel(std::vector<int>& men, std::vector<int>& propose_next, std::vector<int>& women, int n, int numPreferences, int nproc, int pid, int threshold){
     int typePerProc = (n + nproc - 1) / nproc; // nproc is multiple of n
 
     int start_idx = pid * typePerProc;
     int end_idx = std::min((pid + 1) * typePerProc, n);
     int local_size = end_idx - start_idx;
-    std::vector<int> propose_next(local_size, 0);
     std::vector<int> free_males;
     for (int i = 0; i < local_size; i++) {
         free_males.push_back(i); // all men are free at first
@@ -210,15 +209,11 @@ void find_stable_pairs_parallel(std::vector<int>& men, std::vector<int>& women, 
                 free_males.push_back(i);
             }
         }
-        int local_active = 0;
-        if (!free_males.empty()) {
-            stable = false;
-            local_active = 1;
-        }
-
+        
+        int local_active = free_males.size();
         int global_active = 0;        
-        MPI_Allreduce(&local_active, &global_active, 1, MPI_INT, MPI_LOR, MPI_COMM_WORLD);
-        if (global_active == 0) {
+        MPI_Allreduce(&local_active, &global_active, 1, MPI_INT, MPI_SUM, MPI_COMM_WORLD);
+        if (global_active <= threshold) {
             stable = true;
             break;
         }
@@ -227,29 +222,80 @@ void find_stable_pairs_parallel(std::vector<int>& men, std::vector<int>& women, 
 }
 
 
+void find_stable_pairs_sequential(std::vector<int>&participants, int n, std::vector<int>&propose_next, std::queue<int>&free_males) {    
+    int iterations = 0;
+    while (!free_males.empty()) {
+        iterations++;
+        int m_id = free_males.front();
+        free_males.pop();
+        int base_m = m_id * (n+1);
+
+        if (propose_next[m_id] >= n){
+            // this man has no one else to propose to
+            if (participants[base_m] == -1) {
+                printf("something wrong here - no match found for man %d\n", m_id);
+            }
+            continue;
+        } 
+
+        int f_id = participants[base_m + 1 + propose_next[m_id]];
+        propose_next[m_id]++;
+
+        int base_w = f_id*(n+1);
+        int curr_partner = participants[base_w];
+
+        int rank_new = participants[base_w + 1 + m_id];
+        int rank_old = n+1;
+        if (curr_partner != -1) {
+            rank_old = participants[base_w + 1 + curr_partner];
+        }
+
+        if (curr_partner == -1 || rank_new < rank_old) {
+            participants[base_w] = m_id;
+            participants[base_m] = f_id;
+
+            // if she was with someone else, free him
+            if (curr_partner != -1) {
+                participants[curr_partner*(n+1)] = -1;
+                free_males.push(curr_partner);
+            }
+        } else {
+            // she rejects m
+            free_males.push(m_id);
+        }
+    }
+    printf("iteratios serial %d\n", iterations);
+}
+
+
+
 int main (int argc, char *argv[]) {
     const auto init_start = std::chrono::steady_clock::now();
     int pid;
     int nproc;
-  
+  
     // Initialize MPI
     MPI_Init(&argc, &argv);
     // Get process rank
     MPI_Comm_rank(MPI_COMM_WORLD, &pid);
-    // Get total number of processes  
+    // Get total number of processes  
     MPI_Comm_size(MPI_COMM_WORLD, &nproc);
     
     std::string mode;
     int num = 0;
     int opt;
-    int seed;
-    while ((opt = getopt(argc, argv, "n:s:")) != -1) {
+    int seed = 42;
+    int threshold = 0;
+    while ((opt = getopt(argc, argv, "n:s:h:")) != -1) {
         switch (opt) {
             case 's':
                 seed = atoi(optarg);
                 break;
             case 'n':
                 num = atoi(optarg);
+                break;
+            case 'h':
+                threshold = atoi(optarg);
                 break;
             default:
                 std::cerr << "Usage: " << argv[0] << " -f input_filename\n";
@@ -269,9 +315,12 @@ int main (int argc, char *argv[]) {
 
     int start_idx = pid * typePerProc;
     int end_idx = std::min((pid + 1) * typePerProc, num);
+    int local_size = end_idx - start_idx;
+    std::vector<int> propose_next(local_size, 0);
     std::vector<int> men((end_idx - start_idx) * (num + 1));
     std::vector<int> women((end_idx - start_idx) * (num + 1));
     std::vector<int> participants;
+
 
     if (pid == 0) {
         participants.resize(num*2 * (num + 1));
@@ -285,7 +334,7 @@ int main (int argc, char *argv[]) {
                 prefs[j] = j;
             }
     
-            std::mt19937 rng(i * 1000 + seed);  // stable deterministic shuffle
+            std::mt19937 rng(i * 1000 + seed);  // stable deterministic shuffle
             std::shuffle(prefs.begin(), prefs.end(), rng);
     
             // Write to the participants array
@@ -297,7 +346,7 @@ int main (int argc, char *argv[]) {
                 }
             } else {
                 // use inverse ranking
-                int w = i - num;
+                // int w = i - num;
                 for (int rank = 0; rank < num; rank ++) {
                     int man_id = prefs[rank];
                     participants[i * (num + 1) + 1 + man_id] = rank;
@@ -317,38 +366,33 @@ int main (int argc, char *argv[]) {
 
     
     std::cout << "Running mpi code \n";
-    find_stable_pairs_parallel(men, women, num, num, nproc, pid);
+    find_stable_pairs_parallel(men, propose_next, women, num, num, nproc, pid, threshold);
     std::cout << "after running mpi code \n";
     
     
-    const double compute_time = std::chrono::duration_cast<std::chrono::duration<double>>(std::chrono::steady_clock::now() - compute_start).count();
-    std::cout << "Computation time (sec): " << compute_time << '\n';
-
-    
     MPI_Barrier(MPI_COMM_WORLD);
-    const auto finalizing_start = std::chrono::steady_clock::now();
 
     // Collect local man-to-woman matchings
     std::vector<int> local_men_results;
     for (int i = 0; i < men.size() / (num + 1); i++) {
         int partner = men[i * (num + 1)];
-        if (partner != -1) {
-            int man_global_id = start_idx + i;
-            local_men_results.push_back(man_global_id);
-            local_men_results.push_back(partner);
-        }
+        int man_global_id = start_idx + i;
+        local_men_results.push_back(man_global_id);
+        local_men_results.push_back(partner);
     }
 
     // Collect local woman-to-man matchings
     std::vector<int> local_women_results;
     for (int i = 0; i < women.size() / (num + 1); i++) {
         int partner = women[i * (num + 1)];
-        if (partner != -1) {
-            int woman_global_id = num + start_idx + i;
-            local_women_results.push_back(woman_global_id);
-            local_women_results.push_back(partner);
-        }
+        int woman_global_id = num + start_idx + i;
+        local_women_results.push_back(woman_global_id);
+        local_women_results.push_back(partner);
     }
+
+    // std::vector<int> free_men_list_serial;
+    std::queue<int> free_men_list_serial;
+    // free_men_list_serial.reserve(threshold);
 
     if (pid != 0) {
         // Send man matchings
@@ -367,6 +411,9 @@ int main (int argc, char *argv[]) {
             int m = local_men_results[i];
             int w = local_men_results[i + 1];
             participants[m * (num + 1)] = w;
+            if (w == -1) {
+                free_men_list_serial.push(m);
+            }
         }
         for (size_t i = 0; i < local_women_results.size(); i += 2) {
             int w = local_women_results[i];
@@ -386,6 +433,9 @@ int main (int argc, char *argv[]) {
                 int m = recv_men_data[i];
                 int w = recv_men_data[i + 1];
                 participants[m * (num + 1)] = w;
+                if (w == -1) {
+                    free_men_list_serial.push(m);
+                }
             }
 
             // Receive woman matchings
@@ -402,9 +452,26 @@ int main (int argc, char *argv[]) {
         }
     }
     
+    std::vector<int> counts(nproc), displs(nproc);
+    for (int r = 0; r < nproc; ++r) {
+      int s = std::min((r+1)*typePerProc, num) - r*typePerProc;
+      counts[r] = s;
+      displs[r] = r*typePerProc;
+    }
+    std::vector<int> next_proposal;
+    if (pid == 0) {
+        next_proposal.resize(num);
+    }
 
-    const double finalizing_time = std::chrono::duration_cast<std::chrono::duration<double>>(std::chrono::steady_clock::now() - finalizing_start).count();
-    std::cout << "Finalizing time (sec): " << finalizing_time << '\n';
+    MPI_Gatherv(propose_next.data(), local_size, MPI_INT, next_proposal.data(), counts.data(), displs.data(), MPI_INT, 0, MPI_COMM_WORLD);
+
+    find_stable_pairs_sequential(participants, num, next_proposal, free_men_list_serial);
+
+    const double compute_time = std::chrono::duration_cast<std::chrono::duration<double>>(std::chrono::steady_clock::now() - compute_start).count();
+    std::cout << "Computation time (sec): " << compute_time << '\n';
+
+    const auto finalizing_start = std::chrono::steady_clock::now();
+
     // validation
     if (pid == 0){
         bool valid;
@@ -418,5 +485,8 @@ int main (int argc, char *argv[]) {
     
     
     MPI_Finalize();
+
+    const double finalizing_time = std::chrono::duration_cast<std::chrono::duration<double>>(std::chrono::steady_clock::now() - finalizing_start).count();
+    std::cout << "Finalizing time (sec): " << finalizing_time << '\n';
 
 }
