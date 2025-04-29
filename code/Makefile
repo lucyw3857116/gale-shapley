@@ -2,7 +2,7 @@ CXX = g++
 CXXFLAGS = -O2 -std=c++17 -Wall -Wextra
 
 TARGET = gale_shapley_serial
-SRC = galeshapley.cpp galeshapley.h
+SRC = galeshapley_serial.cpp galeshapley.h
 
 all: $(TARGET)
 
