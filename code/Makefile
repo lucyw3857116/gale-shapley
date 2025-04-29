@@ -1,17 +1,13 @@
-APP_NAME=galeshapley
-OBJS=galeshapley.o
-
-
 CXX = g++
-CXXFLAGS = -Wall -O3 -std=c++17 -m64 -I. -fopenmp -Wno-unknown-pragmas
+CXXFLAGS = -O2 -std=c++17 -Wall -Wextra
 
-all: $(APP_NAME)
+TARGET = gale_shapley_serial
+SRC = galeshapley.cpp galeshapley.h
 
-$(APP_NAME): $(OBJS)
-	$(CXX) $(CXXFLAGS) -o $@ $(OBJS)
+all: $(TARGET)
 
-%.o: %.cpp %.h
-	$(CXX) $(CXXFLAGS) -c $<
+$(TARGET): galeshapley.cpp galeshapley.h
+	$(CXX) $(CXXFLAGS) -o $(TARGET) galeshapley.cpp
 
 clean:
-	/bin/rm -rf *~ *.o $(APP_NAME) *.class
+	rm -f $(TARGET)

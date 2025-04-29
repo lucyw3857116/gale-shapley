@@ -11,13 +11,16 @@ if __name__ == "__main__":
     
     with open(input_file, "r") as f:
         header = f.readline().strip()
-        num_part, _, _, num_pref = header.split()
-        num_participants = int(num_part)
-        num_preferences = int(num_pref)
-
+        num_participants = int(header)*2
         pref_list = []
+        count = 0
         for line in f:
             prefs = line.strip().split()
+            if count < num_participants//2:
+                prefs = [int(p) - 1 + num_participants//2 for p in prefs[1:]]
+            else:
+                prefs = [int(p) - 1 for p in prefs[1:]]
+            count += 1
             pref_list.append(prefs)
 
     with open(output_file, "r") as f:
@@ -27,15 +30,31 @@ if __name__ == "__main__":
 
     matches = dict()
     for line in output_data:
-        matches[int(line[0])] = int(line[1])
-        matches[int(line[1])] = int(line[0])
+        m = int(line[0])
+        w = int(line[1])
+        if w in matches.keys():
+            print("Two men with same woman ("+line[1]+"): "+line[0]+" and ", str(matches[w]))
+        matches[m] = w
+        matches[w] = m
 
     # for each pair check all other possible matches and see if they are ranked higher
     stable = True
+    mCount = 0
+    fCount = 0
     for m in range(0,num_participants//2):
+        mCount += 1
         for f in range(num_participants//2, num_participants):
+            fCount += 1
             male_id = str(m)
             female_id = str(f)
+            if m not in matches.keys():
+                print("There was no match for m = " + str(m) + " \n")
+                stable = False
+                break
+            if f not in matches.keys():
+                print("There was no match for f = " + str(f) + " \n")
+                stable = False
+                break
             male_match = matches[m]
             female_match = matches[f]
 
@@ -54,4 +73,5 @@ if __name__ == "__main__":
     
     if stable:
         print("No blocking pair found, correct!")
+    print(mCount, fCount)
 
