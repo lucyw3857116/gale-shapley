@@ -6,8 +6,8 @@ SRC = galeshapley_serial.cpp galeshapley.h
 
 all: $(TARGET)
 
-$(TARGET): galeshapley.cpp galeshapley.h
-	$(CXX) $(CXXFLAGS) -o $(TARGET) galeshapley.cpp
+$(TARGET): galeshapley_serial.cpp galeshapley.h
+	$(CXX) $(CXXFLAGS) -o $(TARGET) galeshapley_serial.cpp
 
 clean:
 	rm -f $(TARGET)
